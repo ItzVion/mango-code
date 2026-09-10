@@ -36,7 +36,7 @@ export default function Course() {
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="pt-8 max-w-2xl pb-16">
       <Link to="/" className="text-sm text-ink-soft hover:text-ink">&larr; Back to dashboard</Link>
       <h2 className="mt-3 text-2xl font-semibold">{course?.name}</h2>
-      <p className="mt-1 text-sm text-ink-soft">5 lessons + test in each difficulty · final assessment</p>
+      <p className="mt-1 text-sm text-ink-soft">30 lessons · 3 difficulty tests · final assessment</p>
 
       {lessons && groups.map(([level, label]) => {
         const items = lessons.filter((lesson) => {
@@ -48,7 +48,7 @@ export default function Course() {
           <section key={level} className="mt-7">
             <div className="mb-3 flex items-center gap-2">
               {level === 'final' ? <ClipboardCheck size={17} /> : <span className="text-sm font-semibold">{label}</span>}
-              {level !== 'final' && <span className="text-xs text-ink-soft">5 lessons + test</span>}
+              {level !== 'final' && <span className="text-xs text-ink-soft">10 lessons + test</span>}
             </div>
             <AnimatedGroup className="flex flex-col gap-2">
               {items.map((unit, i) => {
