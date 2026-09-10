@@ -35,6 +35,22 @@ lessonsRouter.get('/lessons/:lessonId', async (req, res) => {
   res.json({
     ...lesson.rows[0],
     exercises: exercises.rows,
-    quiz: quiz.rows.map((q) => ({ ...q, options: JSON.parse(q.options) })),
+    quiz: quiz.rows.map((q) => ({ id: q.id, question: q.question, options: JSON.parse(q.options) })),
   })
+})
+
+lessonsRouter.post('/quiz/check', async (req, res) => {
+  const { questionId, selectedIndex } = req.body
+  if (!questionId || typeof selectedIndex !== 'number') {
+    return res.status(400).json({ error: 'Missing questionId or selectedIndex' })
+  }
+
+  const result = await db.execute({
+    sql: 'SELECT correct_index FROM quiz_questions WHERE id = ?',
+    args: [questionId],
+  })
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Question not found' })
+
+  const correctIndex = result.rows[0].correct_index
+  res.json({ correct: selectedIndex === correctIndex, correctIndex })
 })
