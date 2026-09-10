@@ -28,10 +28,7 @@ async function init() {
       { sql: 'CREATE TABLE IF NOT EXISTS streaks (user_id TEXT PRIMARY KEY REFERENCES users(id), current_streak INTEGER NOT NULL DEFAULT 0, longest_streak INTEGER NOT NULL DEFAULT 0, last_active_date TEXT)', args: [] },
       { sql: 'CREATE TABLE IF NOT EXISTS test_attempts (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES users(id), lesson_id TEXT NOT NULL REFERENCES lessons(id), score INTEGER NOT NULL, total INTEGER NOT NULL, passed INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)', args: [] },
     ], 'write')
-    for (const sql of [
-      'ALTER TABLE lessons ADD COLUMN level TEXT NOT NULL DEFAULT "easy"',
-      'ALTER TABLE lessons ADD COLUMN unit_type TEXT NOT NULL DEFAULT "lesson"',
-    ]) {
+    for (const sql of ['ALTER TABLE lessons ADD COLUMN level TEXT NOT NULL DEFAULT "easy"', 'ALTER TABLE lessons ADD COLUMN unit_type TEXT NOT NULL DEFAULT "lesson"']) {
       try { await d.execute(sql) } catch (error) { if (!String(error?.message || error).toLowerCase().includes('duplicate column')) throw error }
     }
     await d.batch([
@@ -59,10 +56,7 @@ function userIdFrom(req) {
 async function ensureUser(d, req) {
   const id = userIdFrom(req)
   if (!id) return null
-  await d.execute({
-    sql: 'INSERT OR IGNORE INTO users (id, email, name) VALUES (?, ?, ?)',
-    args: [id, `anonymous-${id}@mangocode.local`, 'MangoCoder'],
-  })
+  await d.execute({ sql: 'INSERT OR IGNORE INTO users (id, email, name) VALUES (?, ?, ?)', args: [id, `anonymous-${id}@mangocode.local`, 'MangoCoder'] })
   await d.execute({ sql: 'INSERT OR IGNORE INTO streaks (user_id) VALUES (?)', args: [id] })
   return id
 }
@@ -80,10 +74,7 @@ async function touchStreak(d, userId) {
 }
 
 async function courseAccess(d, courseId, userId) {
-  const rows = await d.execute({
-    sql: 'SELECT id, title, sort_order, level, unit_type FROM lessons WHERE course_id = ? ORDER BY sort_order',
-    args: [courseId],
-  })
+  const rows = await d.execute({ sql: 'SELECT id, title, sort_order, level, unit_type FROM lessons WHERE course_id = ? ORDER BY sort_order', args: [courseId] })
   const completed = new Set()
   if (userId) {
     const p = await d.execute({ sql: 'SELECT lesson_id FROM progress WHERE user_id = ?', args: [userId] })
@@ -91,27 +82,20 @@ async function courseAccess(d, courseId, userId) {
   }
   const tests = {}
   if (userId) {
-    const t = await d.execute({
-      sql: `SELECT lesson_id, MAX(passed) AS passed FROM test_attempts WHERE user_id = ? GROUP BY lesson_id`,
-      args: [userId],
-    })
+    const t = await d.execute({ sql: 'SELECT lesson_id, MAX(passed) AS passed FROM test_attempts WHERE user_id = ? GROUP BY lesson_id', args: [userId] })
     for (const row of t.rows) tests[row.lesson_id] = Number(row.passed) === 1
   }
-
   const output = []
   for (const lesson of rows.rows) {
     let unlocked = lesson.level === 'easy'
     if (lesson.level === 'medium') unlocked = Boolean(tests[`${courseId}-easy-test`])
     if (lesson.level === 'hard') unlocked = Boolean(tests[`${courseId}-medium-test`])
     if (lesson.level === 'final') unlocked = Boolean(tests[`${courseId}-hard-test`])
-
-    // A difficulty test unlocks only after its five lessons are complete.
     if (lesson.unit_type === 'test') {
       const levelLessons = rows.rows.filter((x) => x.level === lesson.level && x.unit_type === 'lesson')
       unlocked = levelLessons.every((x) => completed.has(x.id))
     }
     if (lesson.unit_type === 'final') unlocked = Boolean(tests[`${courseId}-hard-test`])
-
     output.push({ ...lesson, completed: completed.has(lesson.id), unlocked, passed: Boolean(tests[lesson.id]) })
   }
   return output
@@ -158,10 +142,8 @@ export default async function handler(req, res) {
       const r = await d.execute('SELECT * FROM courses ORDER BY sort_order')
       return json(res, 200, r.rows)
     }
-
     const cm = path.match(/^\/api\/courses\/([^/]+)\/lessons$/)
     if (req.method === 'GET' && cm) return json(res, 200, await courseAccess(d, cm[1], userId))
-
     if (req.method === 'GET' && path === '/api/progress') {
       if (!userId) return json(res, 200, { user: null, completed: [], tests: [], streak: null })
       const [p, t, s] = await Promise.all([
@@ -171,7 +153,6 @@ export default async function handler(req, res) {
       ])
       return json(res, 200, { user: userId, completed: p.rows, tests: t.rows, streak: s.rows[0] || null })
     }
-
     const lm = path.match(/^\/api\/lessons\/([^/]+)$/)
     if (req.method === 'GET' && lm) {
       const lesson = await d.execute({ sql: 'SELECT * FROM lessons WHERE id = ?', args: [lm[1]] })
@@ -182,15 +163,8 @@ export default async function handler(req, res) {
       if (state && !state.unlocked) return json(res, 403, { error: 'This unit is locked until you complete the previous checkpoint.' })
       const ex = await d.execute({ sql: 'SELECT id, language, prompt, starter_code FROM exercises WHERE lesson_id = ?', args: [lm[1]] })
       const quiz = await d.execute({ sql: 'SELECT id, question, options FROM quiz_questions WHERE lesson_id = ? ORDER BY id', args: [lm[1]] })
-      return json(res, 200, {
-        ...row,
-        completed: state?.completed || false,
-        passed: state?.passed || false,
-        exercises: ex.rows,
-        quiz: quiz.rows.map((q) => ({ id: q.id, question: q.question, options: JSON.parse(q.options) })),
-      })
+      return json(res, 200, { ...row, completed: state?.completed || false, passed: state?.passed || false, exercises: ex.rows, quiz: quiz.rows.map((q) => ({ id: q.id, question: q.question, options: JSON.parse(q.options) })) })
     }
-
     if (req.method === 'POST' && path === '/api/progress/complete') {
       if (!userId) return json(res, 401, { error: 'Progress requires a browser user id.' })
       const { lessonId } = req.body || {}
@@ -206,7 +180,6 @@ export default async function handler(req, res) {
       await touchStreak(d, userId)
       return json(res, 200, { ok: true, lessonId })
     }
-
     if (req.method === 'POST' && path === '/api/quiz/check') {
       const { questionId, selectedIndex } = req.body || {}
       if (!questionId || !Number.isInteger(selectedIndex) || selectedIndex < 0) return json(res, 400, { error: 'Invalid answer' })
@@ -215,7 +188,6 @@ export default async function handler(req, res) {
       const correct = selectedIndex === Number(r.rows[0].correct_index)
       return json(res, 200, { correct, message: correct ? 'Correct!' : 'Not quite — try another answer.' })
     }
-
     if (req.method === 'POST' && path === '/api/tests/submit') {
       if (!userId) return json(res, 401, { error: 'Progress requires a browser user id.' })
       const { lessonId, answers } = req.body || {}
@@ -231,14 +203,13 @@ export default async function handler(req, res) {
       let score = 0
       for (const q of qs.rows) if (map.get(q.id) === Number(q.correct_index)) score++
       const total = qs.rows.length
-      const required = row.unit_type === 'final' ? 8 : 4
+      const required = 8
       const passed = score >= required
       await d.execute({ sql: 'INSERT INTO test_attempts (user_id, lesson_id, score, total, passed) VALUES (?, ?, ?, ?, ?)', args: [userId, lessonId, score, total, passed ? 1 : 0] })
       if (passed) await d.execute({ sql: 'INSERT OR REPLACE INTO progress (user_id, lesson_id, completed_at) VALUES (?, ?, CURRENT_TIMESTAMP)', args: [userId, lessonId] })
       await touchStreak(d, userId)
       return json(res, 200, { score, total, required, passed, message: passed ? 'Checkpoint passed! Next section unlocked.' : `You need ${required}/${total} to pass. Try again.` })
     }
-
     if (req.method === 'POST' && path === '/api/exercises/check') {
       if (!userId) return json(res, 401, { pass: false, message: 'Progress requires a browser user id.' })
       const { exerciseId, code } = req.body || {}
@@ -263,7 +234,6 @@ export default async function handler(req, res) {
       if (run.code !== 0) return json(res, 200, { pass: false, message: 'Your code produced an error. Fix it and try again.', stderr: run.stderr || '' })
       return json(res, 200, { pass, message: pass ? 'Correct! Your output matched.' : 'Not quite. Check your output and try again.', stdout: run.stdout || '' })
     }
-
     return json(res, 404, { error: 'Not found' })
   } catch (error) {
     console.error('MangoCode API error', error)
