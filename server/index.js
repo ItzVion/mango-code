@@ -1,4 +1,4 @@
-import express from 'express'
+﻿import express from 'express'
 import cors from 'cors'
 import 'dotenv/config'
 import { lessonsRouter } from './routes/lessons.js'
@@ -14,4 +14,8 @@ app.use('/api/exercises', exercisesRouter)
 app.get('/api/health', (req, res) => res.json({ ok: true }))
 
 const PORT = process.env.PORT || 4000
-app.listen(PORT, () => console.log(`MangoCode server running on :${PORT}`))
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => console.log(`MangoCode server running on :${PORT}`))
+}
+
+export default app
