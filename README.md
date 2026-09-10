@@ -1,24 +1,39 @@
 # MangoCode
 
-Learn HTML, CSS, JavaScript, Python, C, and C++ — lessons, quizzes, and
-code exercises that check your answer and explain mistakes.
+MangoCode is an animated coding-learning platform for HTML & CSS, JavaScript, Python, C, and C++. Learners move from lessons to quizzes and runnable code exercises with immediate feedback.
 
 ## Stack
-- Frontend: React + Vite + Tailwind v4, Motion (Motion Primitives-style components), react-router — deployed on Vercel
-- Backend: Express + Turso (libSQL) — deployed on Render
-- Code execution/checking: Piston API (emkc.org)
 
-## Local dev
+- Frontend: React + Vite + Tailwind CSS v4 + Motion, deployed on Vercel
+- Backend: Express serverless function on Vercel
+- Database: Turso / libSQL
+- Code execution: Piston API for Python, JavaScript, C, and C++ exercises
+
+## Local development
+
+```text
+cd server && npm install
+# create server/.env from .env.example
+npm run dev
+
+cd ../client && npm install
+npm run dev
 ```
-cd server && npm install && cp .env.example .env   # fill in Turso URL + token
-npm run dev                                          # :4000
 
-cd client && npm install
-npm run dev                                          # :5173, proxies /api to :4000
-```
+The Vite dev server proxies `/api` to `http://localhost:4000`.
 
-## Deploy
-1. Push to GitHub.
-2. Vercel: import repo, set root directory to `client`, framework = Vite.
-3. Render: new Web Service, root directory `server`, build `npm install`, start `npm start`, add env vars from `.env.example`.
-4. Turso: create a database, paste `server/schema.sql` into the Turso SQL console.
+## Database
+
+Apply `server/schema.sql` first, then `server/seed.sql` to create the learning catalog and starter exercises.
+
+## Vercel
+
+The repository root is the Vercel project root. `vercel.json` builds `client` and rewrites `/api/*` to the Vercel serverless Express entrypoint in `api/index.js`.
+
+Required server environment variables in Vercel:
+
+- `TURSO_DATABASE_URL`
+- `TURSO_AUTH_TOKEN`
+- `PISTON_URL` (normally `https://emkc.org/api/v2/piston`)
+
+Never commit `.env` or credentials.
