@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { CheckCircle2, XCircle } from 'lucide-react'
+import { CheckCircle2, RotateCcw, XCircle } from 'lucide-react'
 import { apiHeaders } from '../../lib/user'
 
 function Celebration() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl" aria-hidden="true">
-      {Array.from({ length: 14 }, (_, i) => (
+      {Array.from({ length: 16 }, (_, i) => (
         <motion.span
           key={i}
-          initial={{ opacity: 1, x: '50%', y: '45%', scale: 0.5, rotate: 0 }}
-          animate={{ opacity: 0, x: `${12 + ((i * 67) % 78)}%`, y: `${5 + ((i * 43) % 82)}%`, scale: 1, rotate: i * 47 }}
-          transition={{ duration: 0.75, delay: i * 0.018, ease: 'easeOut' }}
+          initial={{ opacity: 1, x: '50%', y: '45%', scale: 0.4, rotate: 0 }}
+          animate={{ opacity: 0, x: `${8 + ((i * 67) % 84)}%`, y: `${4 + ((i * 43) % 84)}%`, scale: 1, rotate: i * 53 }}
+          transition={{ duration: 0.8, delay: i * 0.015, ease: 'easeOut' }}
           className="absolute h-2 w-2 rounded-sm bg-mango"
         />
       ))}
@@ -25,7 +25,7 @@ export function QuizBlock({ id, question, options, onAnswered }) {
   const [loading, setLoading] = useState(false)
 
   async function pick(index) {
-    if (result || loading) return
+    if (loading || result?.correct) return
     setSelected(index)
     setLoading(true)
     try {
@@ -41,9 +41,16 @@ export function QuizBlock({ id, question, options, onAnswered }) {
     } catch {
       setResult({ correct: false, error: true, message: 'Could not check this answer. Please try again.' })
       setSelected(null)
+      onAnswered?.(null)
     } finally {
       setLoading(false)
     }
+  }
+
+  function retry() {
+    setSelected(null)
+    setResult(null)
+    onAnswered?.(null)
   }
 
   return (
@@ -63,16 +70,15 @@ export function QuizBlock({ id, question, options, onAnswered }) {
             return (
               <motion.button
                 key={i}
-                whileHover={!result && !loading ? { x: 4, scale: 1.01 } : {}}
-                whileTap={!result && !loading ? { scale: 0.985 } : {}}
+                type="button"
+                whileHover={!result || !result.correct ? { x: 4, scale: 1.01 } : {}}
+                whileTap={!result || !result.correct ? { scale: 0.985 } : {}}
                 onClick={() => pick(i)}
-                disabled={Boolean(result) || loading}
+                disabled={loading || Boolean(result?.correct)}
                 className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm transition-colors disabled:cursor-default ${
-                  isCorrectPick
-                    ? 'border-leaf/40 bg-leaf/10 text-leaf'
-                    : isWrongPick
-                    ? 'border-rose/40 bg-rose/10 text-rose'
-                    : 'border-ink/10 bg-paper hover:border-mango/50 hover:bg-mango/5'
+                  isCorrectPick ? 'border-leaf/40 bg-leaf/10 text-leaf' :
+                  isWrongPick ? 'border-rose/40 bg-rose/10 text-rose' :
+                  'border-ink/10 bg-paper hover:border-mango/50 hover:bg-mango/5'
                 }`}
               >
                 <span>{opt}</span>
@@ -84,12 +90,9 @@ export function QuizBlock({ id, question, options, onAnswered }) {
         </div>
         <AnimatePresence>
           {result && (
-            <motion.div
-              initial={{ opacity: 0, y: 8, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              className={`mt-4 rounded-2xl border p-4 text-sm font-medium ${result.correct ? 'border-leaf/30 bg-leaf/10 text-leaf' : 'border-rose/30 bg-rose/10 text-rose'}`}
-            >
-              {result.correct ? '🎉 ' : '💭 '}{result.message}
+            <motion.div initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className={`mt-4 flex items-center justify-between gap-3 rounded-2xl border p-4 text-sm font-medium ${result.correct ? 'border-leaf/30 bg-leaf/10 text-leaf' : 'border-rose/30 bg-rose/10 text-rose'}`}>
+              <span>{result.correct ? '🎉 ' : '💭 '}{result.message}</span>
+              {!result.correct && !result.error && <button type="button" onClick={retry} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/70 px-3 py-1.5 text-xs font-semibold text-ink hover:bg-white"><RotateCcw size={13} /> Try again</button>}
             </motion.div>
           )}
         </AnimatePresence>
