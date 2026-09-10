@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { motion } from 'motion/react'
+import { motion, AnimatePresence } from 'motion/react'
 import { CheckCircle2, LockKeyhole, RotateCcw, Trophy } from 'lucide-react'
 import { apiHeaders } from '../../lib/user'
 
@@ -7,7 +7,7 @@ export function TestBlock({ lessonId, questions, final = false, passed = false, 
   const [answers, setAnswers] = useState({})
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
-  const required = final ? 8 : 4
+  const required = 8
   const complete = useMemo(() => questions.every((q) => Number.isInteger(answers[q.id])), [questions, answers])
 
   async function submit() {
@@ -38,75 +38,48 @@ export function TestBlock({ lessonId, questions, final = false, passed = false, 
 
   if (passed && !result) {
     return (
-      <div className="rounded-2xl border border-leaf/30 bg-leaf/10 p-6">
+      <motion.div initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="rounded-3xl border border-leaf/30 bg-leaf/10 p-6">
         <div className="flex items-center gap-3 text-leaf">
-          <Trophy size={22} />
-          <div>
-            <p className="font-semibold">Checkpoint passed</p>
-            <p className="text-sm opacity-90">You can continue to the next section.</p>
-          </div>
+          <motion.div animate={{ rotate: [0, -8, 8, 0], scale: [1, 1.1, 1] }}><Trophy size={24} /></motion.div>
+          <div><p className="font-semibold">Checkpoint passed 🎉</p><p className="text-sm opacity-90">Nice! The next section is unlocked.</p></div>
         </div>
-      </div>
+      </motion.div>
     )
   }
 
   return (
-    <div className="rounded-2xl border border-ink/10 bg-card p-5">
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="rounded-3xl border border-ink/10 bg-card p-5 shadow-sm sm:p-6">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="font-semibold">{final ? 'Final Test' : 'Difficulty Test'}</h3>
-          <p className="mt-1 text-sm text-ink-soft">Answer all {questions.length} questions. You need {required}/{questions.length} to pass.</p>
-        </div>
+        <div><h3 className="font-semibold">{final ? 'Final Assessment' : 'Checkpoint Challenge'}</h3><p className="mt-1 text-sm text-ink-soft">10 questions · {required}/10 to pass</p></div>
         <LockKeyhole size={18} className="text-ink-soft" />
       </div>
 
       <div className="mt-5 flex flex-col gap-5">
         {questions.map((q, qi) => (
-          <div key={q.id}>
+          <motion.div key={q.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: qi * 0.035 }}>
             <p className="font-medium">{qi + 1}. {q.question}</p>
             <div className="mt-2 grid gap-2">
               {q.options.map((option, i) => {
                 const selected = answers[q.id] === i
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setAnswers((current) => ({ ...current, [q.id]: i }))}
-                    className={`rounded-xl border px-4 py-2.5 text-left text-sm transition-colors ${selected ? 'border-mango bg-mango/15' : 'border-ink/10 hover:bg-ink/5'}`}
-                  >
-                    {option}
-                  </button>
-                )
+                return <motion.button key={i} type="button" whileTap={{ scale: 0.985 }} onClick={() => setAnswers((current) => ({ ...current, [q.id]: i }))} className={`rounded-xl border px-4 py-2.5 text-left text-sm transition-colors ${selected ? 'border-mango bg-mango/15' : 'border-ink/10 hover:border-mango/40 hover:bg-mango/5'}`}>{option}</motion.button>
               })}
             </div>
-          </div>
+          </motion.div>
         ))}
       </div>
 
-      <div className="mt-5 flex items-center gap-2">
-        <motion.button
-          whileTap={{ scale: 0.97 }}
-          onClick={submit}
-          disabled={!complete || loading}
-          className="rounded-full bg-mango px-5 py-2.5 text-sm font-semibold text-ink disabled:opacity-50"
-        >
-          {loading ? 'Submitting…' : 'Submit test'}
-        </motion.button>
-        {result && !result.passed && (
-          <button type="button" onClick={reset} className="inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm text-ink-soft hover:bg-ink/5">
-            <RotateCcw size={15} /> Try again
-          </button>
-        )}
+      <div className="mt-6 flex items-center gap-2">
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={submit} disabled={!complete || loading} className="rounded-full bg-mango px-5 py-2.5 text-sm font-semibold text-ink disabled:opacity-50">{loading ? 'Checking…' : 'Check my answers'}</motion.button>
+        {result && !result.passed && <button type="button" onClick={reset} className="inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm text-ink-soft hover:bg-ink/5"><RotateCcw size={15} /> Try again</button>}
       </div>
 
-      {result && (
-        <div className={`mt-4 rounded-xl border p-4 text-sm ${result.passed ? 'border-leaf/30 bg-leaf/10 text-leaf' : 'border-rose/30 bg-rose/10 text-rose'}`}>
-          <div className="flex items-center gap-2 font-semibold">
-            {result.passed && <CheckCircle2 size={17} />}
-            {result.score}/{result.total} — {result.message}
-          </div>
-        </div>
-      )}
-    </div>
+      <AnimatePresence>
+        {result && (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`mt-4 rounded-2xl border p-4 text-sm ${result.passed ? 'border-leaf/30 bg-leaf/10 text-leaf' : 'border-rose/30 bg-rose/10 text-rose'}`}>
+            <div className="flex items-center gap-2 font-semibold">{result.passed && <CheckCircle2 size={17} />}{result.score != null ? `${result.score}/${result.total} — ` : ''}{result.message}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   )
 }
