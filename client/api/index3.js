@@ -20,13 +20,20 @@ async function init() {
     const d = database()
     await d.batch([
       { sql: 'CREATE TABLE IF NOT EXISTS courses (id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0)', args: [] },
-      { sql: 'CREATE TABLE IF NOT EXISTS lessons (id TEXT PRIMARY KEY, course_id TEXT NOT NULL REFERENCES courses(id), title TEXT NOT NULL, content TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0)', args: [] },
+      { sql: 'CREATE TABLE IF NOT EXISTS lessons (id TEXT PRIMARY KEY, course_id TEXT NOT NULL REFERENCES courses(id), title TEXT NOT NULL, content TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, level TEXT NOT NULL DEFAULT "easy", unit_type TEXT NOT NULL DEFAULT "lesson")', args: [] },
       { sql: 'CREATE TABLE IF NOT EXISTS exercises (id TEXT PRIMARY KEY, lesson_id TEXT NOT NULL REFERENCES lessons(id), language TEXT NOT NULL, prompt TEXT NOT NULL, starter_code TEXT DEFAULT "", test_input TEXT DEFAULT "", expected_output TEXT NOT NULL)', args: [] },
       { sql: 'CREATE TABLE IF NOT EXISTS quiz_questions (id TEXT PRIMARY KEY, lesson_id TEXT NOT NULL REFERENCES lessons(id), question TEXT NOT NULL, options TEXT NOT NULL, correct_index INTEGER NOT NULL)', args: [] },
     ], 'write')
+    // Upgrade databases created by the older 3-lesson schema.
+    for (const sql of [
+      'ALTER TABLE lessons ADD COLUMN level TEXT NOT NULL DEFAULT "easy"',
+      'ALTER TABLE lessons ADD COLUMN unit_type TEXT NOT NULL DEFAULT "lesson"',
+    ]) {
+      try { await d.execute(sql) } catch (error) { if (!String(error?.message || error).toLowerCase().includes('duplicate column')) throw error }
+    }
     const statements = []
     for (const row of courses) statements.push({ sql: 'INSERT OR IGNORE INTO courses VALUES (?, ?, ?, ?)', args: row })
-    for (const row of lessons) statements.push({ sql: 'INSERT OR IGNORE INTO lessons VALUES (?, ?, ?, ?, ?)', args: row })
+    for (const row of lessons) statements.push({ sql: 'INSERT OR IGNORE INTO lessons (id, course_id, title, content, sort_order, level, unit_type) VALUES (?, ?, ?, ?, ?, ?, ?)', args: row })
     for (const row of exercises) statements.push({ sql: 'INSERT OR IGNORE INTO exercises VALUES (?, ?, ?, ?, ?, ?, ?)', args: row })
     for (const row of quizzes) statements.push({ sql: 'INSERT OR IGNORE INTO quiz_questions VALUES (?, ?, ?, ?, ?)', args: [row[0], row[1], row[2], JSON.stringify(row[3]), row[4]] })
     await d.batch(statements, 'write')
@@ -83,7 +90,7 @@ export default async function handler(req, res) {
 
     const cm = path.match(/^\/api\/courses\/([^/]+)\/lessons$/)
     if (req.method === 'GET' && cm) {
-      const r = await d.execute({ sql: 'SELECT id, title, sort_order FROM lessons WHERE course_id = ? ORDER BY sort_order', args: [cm[1]] })
+      const r = await d.execute({ sql: 'SELECT id, title, sort_order, level, unit_type FROM lessons WHERE course_id = ? ORDER BY sort_order', args: [cm[1]] })
       return json(res, 200, r.rows)
     }
 
