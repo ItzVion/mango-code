@@ -8,6 +8,40 @@ import { QuizBlock } from '../components/motion/QuizBlock'
 import { TestBlock } from '../components/motion/TestBlock'
 import { apiHeaders } from '../lib/user'
 
+function LessonContent({ content }) {
+  const [intro, rest = ''] = content.split('\n\nExample:\n')
+  const [example = '', afterExample = ''] = rest.split('\n\nWhat to notice:\n')
+  const [notice = '', practice = ''] = afterExample.split('\n\nPractice before the check:\n')
+  const hasStructuredContent = Boolean(rest)
+
+  if (!hasStructuredContent) {
+    return <p className="mt-4 whitespace-pre-line text-ink-soft leading-relaxed">{content}</p>
+  }
+
+  return (
+    <div className="mt-5 space-y-6 text-[15px] leading-7 text-ink-soft">
+      <section>
+        <p className="whitespace-pre-line">{intro}</p>
+      </section>
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink">Example</h3>
+        <pre className="overflow-x-auto rounded-2xl border border-black/10 bg-black/[0.04] p-4 font-mono text-[13px] leading-6 text-ink"><code>{example}</code></pre>
+      </section>
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink">What to notice</h3>
+        <p className="whitespace-pre-line">{notice}</p>
+      </section>
+
+      <section className="rounded-2xl border border-black/10 bg-white/50 p-5">
+        <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink">Practice before the check</h3>
+        <p className="whitespace-pre-line">{practice}</p>
+      </section>
+    </div>
+  )
+}
+
 export default function Lesson() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -50,24 +84,27 @@ export default function Lesson() {
   const isTest = lesson.unit_type === 'test' || lesson.unit_type === 'final'
 
   return (
-    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="max-w-2xl pt-8 pb-16">
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl pt-8 pb-16">
       <Link to={`/course/${lesson.course_id}`} className="text-sm text-ink-soft hover:text-ink">&larr; Back to course</Link>
       <TextEffect as="h2" className="mt-3 text-2xl font-semibold" delay={0.1}>{lesson.title}</TextEffect>
 
-      <p className="mt-4 whitespace-pre-line text-ink-soft leading-relaxed">{lesson.content}</p>
-
       {isTest ? (
-        <div className="mt-8">
-          <TestBlock
-            lessonId={lesson.id}
-            questions={lesson.quiz}
-            final={lesson.unit_type === 'final'}
-            passed={lesson.passed}
-            onPassed={() => setLesson((current) => ({ ...current, passed: true, completed: true }))}
-          />
-        </div>
+        <>
+          <LessonContent content={lesson.content} />
+          <div className="mt-8">
+            <TestBlock
+              lessonId={lesson.id}
+              questions={lesson.quiz}
+              final={lesson.unit_type === 'final'}
+              passed={lesson.passed}
+              onPassed={() => setLesson((current) => ({ ...current, passed: true, completed: true }))}
+            />
+          </div>
+        </>
       ) : (
         <>
+          <LessonContent content={lesson.content} />
+
           {lesson.exercises.length > 0 && (
             <div className="mt-8 flex flex-col gap-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">Try it</h3>
@@ -80,6 +117,7 @@ export default function Lesson() {
           {lesson.quiz.length > 0 && (
             <div className="mt-8 flex flex-col gap-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">Quick check</h3>
+              <p className="-mt-2 text-sm text-ink-soft">You have just learned the concept above. Use this question to check your understanding.</p>
               {lesson.quiz.map((q) => (
                 <QuizBlock key={q.id} id={q.id} question={q.question} options={q.options} />
               ))}
