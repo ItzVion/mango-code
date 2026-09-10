@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { motion } from 'motion/react'
-import { LayoutDashboard, Code2, Braces, Hash, FileCode2, Flame, Sparkles } from 'lucide-react'
+import { LayoutDashboard, Code2, Braces, Hash, FileCode2, Flame } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
 const NAV = [
@@ -21,9 +21,7 @@ export function Sidebar() {
         transition={{ duration: 0.4 }}
         className="flex items-center gap-2 px-1"
       >
-        <div className="grid h-9 w-9 place-items-center rounded-xl bg-mango text-ink">
-          <Sparkles size={18} strokeWidth={2.5} />
-        </div>
+        <img src="/logo-dark-bg.svg" alt="MangoCode" className="h-9 w-9 rounded-xl object-cover" />
         <span className="font-display text-lg font-semibold">MangoCode</span>
       </motion.div>
 
@@ -38,14 +36,10 @@ export function Sidebar() {
             <NavLink
               to={to}
               end={end}
-              className={({ isActive }) =>
-                cn(
-                  'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-ink text-paper'
-                    : 'text-ink-soft hover:bg-ink/5 hover:text-ink'
-                )
-              }
+              className={({ isActive }) => cn(
+                'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                isActive ? 'bg-ink text-paper' : 'text-ink-soft hover:bg-ink/5 hover:text-ink'
+              )}
             >
               <Icon size={17} strokeWidth={2.25} />
               {label}
