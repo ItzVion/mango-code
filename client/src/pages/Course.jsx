@@ -33,7 +33,8 @@ export default function Course() {
       {lessons && lessons.length === 0 && <p className="mt-6 text-sm text-ink-soft">No lessons published yet — check back soon.</p>}
 
       {lessons && groups.map(([level, label]) => {
-        const items = lessons.filter((lesson) => lesson.level === level)
+        // Ignore the three legacy lesson IDs from the original demo curriculum.
+        const items = lessons.filter((lesson) => lesson.level === level && (level === 'final' || lesson.id.includes(`-${level}-`)))
         if (!items.length) return null
         return (
           <section key={level} className="mt-7">
