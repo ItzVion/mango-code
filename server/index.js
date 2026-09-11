@@ -3,6 +3,8 @@ import cors from 'cors'
 import 'dotenv/config'
 import { lessonsRouter } from './routes/lessons.js'
 import { exercisesRouter } from './routes/exercises.js'
+import { authRouter } from './routes/auth.js'
+import { db } from './db.js'
 
 const app = express()
 app.disable('x-powered-by')
@@ -33,6 +35,7 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) return callback(null, true)
     return callback(new Error('Origin not allowed'))
   },
+  credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'X-Mango-User'],
 }))
@@ -49,8 +52,6 @@ function rateLimit(key, limit, windowMs) {
     if (row.count >= limit) return false
     row.count += 1
   }
-
-  // Bound memory even if an attacker rotates source IPs.
   if (requestWindows.size > 10_000) {
     for (const [storedKey, stored] of requestWindows) {
       if (now - stored.startedAt >= windowMs) requestWindows.delete(storedKey)
@@ -78,6 +79,33 @@ app.use('/api/quiz/check', (req, res, next) => {
   next()
 })
 
+let schemaPromise
+async function ensureAuthSchema() {
+  if (!schemaPromise) {
+    schemaPromise = (async () => {
+      await db.execute(`CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires_at TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`)
+      const migrations = [
+        'ALTER TABLE users ADD COLUMN password_hash TEXT',
+        'ALTER TABLE users ADD COLUMN google_sub TEXT',
+        "ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'password'",
+      ]
+      for (const sql of migrations) {
+        try { await db.execute(sql) } catch (err) {
+          if (!/duplicate column|already exists/i.test(String(err?.message || err))) throw err
+        }
+      }
+      await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL')
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)')
+    })()
+  }
+  return schemaPromise
+}
+
+app.use('/api/auth', async (_req, _res, next) => {
+  try { await ensureAuthSchema(); next() } catch (err) { next(err) }
+})
+
+app.use('/api/auth', authRouter)
 app.use('/api', lessonsRouter)
 app.use('/api/exercises', exercisesRouter)
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
