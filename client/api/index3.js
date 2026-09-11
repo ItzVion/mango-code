@@ -9,6 +9,7 @@ const SESSION_COOKIE = 'mc_session'
 const SESSION_DAYS = 30
 const PASSWORD_MIN = 8
 const PASSWORD_MAX = 128
+const authWindows = new Map()
 
 function database() {
   if (!db) {
@@ -50,315 +51,51 @@ async function init() {
   return initialized
 }
 
-function json(res, status, value) {
-  res.statusCode = status
-  res.setHeader('Content-Type', 'application/json; charset=utf-8')
-  res.end(JSON.stringify(value))
-}
-
-function userIdFrom(req) {
-  const value = String(req.headers['x-mango-user'] || '').trim()
-  return /^[A-Za-z0-9_-]{16,80}$/.test(value) ? value : null
-}
+function json(res, status, value) { res.statusCode = status; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(value)) }
+function userIdFrom(req) { const value = String(req.headers['x-mango-user'] || '').trim(); return /^[A-Za-z0-9_-]{16,80}$/.test(value) ? value : null }
 function sessionHash(token) { return crypto.createHash('sha256').update(token).digest('hex') }
 function randomId(bytes = 24) { return crypto.randomBytes(bytes).toString('base64url') }
 function validEmail(value) { return typeof value === 'string' && value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) }
 function passwordBytes(value) { return Buffer.byteLength(String(value || ''), 'utf8') }
-function cookie(res, token) {
-  const parts = [`${SESSION_COOKIE}=${encodeURIComponent(token)}`, 'Path=/', `Max-Age=${SESSION_DAYS * 86400}`, 'HttpOnly', 'SameSite=Lax']
-  if (process.env.VERCEL || process.env.NODE_ENV === 'production') parts.push('Secure')
-  res.setHeader('Set-Cookie', parts.join('; '))
-}
-function clearCookie(res) {
-  const parts = [`${SESSION_COOKIE}=`, 'Path=/', 'Max-Age=0', 'HttpOnly', 'SameSite=Lax']
-  if (process.env.VERCEL || process.env.NODE_ENV === 'production') parts.push('Secure')
-  res.setHeader('Set-Cookie', parts.join('; '))
-}
-function sessionToken(req) {
-  const raw = String(req.headers.cookie || '')
-  const match = raw.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`))
-  return match ? decodeURIComponent(match[1]) : null
-}
-async function sessionUser(d, req) {
-  const token = sessionToken(req)
-  if (!token || token.length < 32 || token.length > 256) return null
-  const r = await d.execute({ sql: 'SELECT u.id, u.email, u.name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > CURRENT_TIMESTAMP LIMIT 1', args: [sessionHash(token)] })
-  return r.rows[0] || null
-}
-async function createSession(d, userId, res) {
-  const token = randomId(32)
-  const expires = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString()
-  await d.execute({ sql: 'INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)', args: [randomId(16), userId, sessionHash(token), expires] })
-  cookie(res, token)
-}
-function checkOrigin(req) {
-  if (!['POST','PUT','PATCH','DELETE'].includes(req.method)) return true
-  const origin = req.headers.origin
-  if (!origin) return true
-  return origin === 'https://mangocode.vercel.app' || origin === 'https://mango-code.vercel.app' || origin === 'http://localhost:5173' || origin === 'http://localhost:4173'
-}
-async function hashPassword(password) {
-  const salt = crypto.randomBytes(16)
-  const derived = await new Promise((resolve, reject) => crypto.scrypt(password, salt, 32, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (err, key) => err ? reject(err) : resolve(key)))
-  return `scrypt$${salt.toString('base64url')}$${Buffer.from(derived).toString('base64url')}`
-}
-async function verifyPassword(password, encoded) {
-  const [kind, saltText, keyText] = String(encoded || '').split('$')
-  if (kind !== 'scrypt' || !saltText || !keyText) return false
-  try {
-    const salt = Buffer.from(saltText, 'base64url')
-    const expected = Buffer.from(keyText, 'base64url')
-    const derived = await new Promise((resolve, reject) => crypto.scrypt(password, salt, expected.length, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (err, key) => err ? reject(err) : resolve(key)))
-    return expected.length === derived.length && crypto.timingSafeEqual(expected, derived)
-  } catch { return false }
-}
+function cookie(res, token) { const parts = [`${SESSION_COOKIE}=${encodeURIComponent(token)}`, 'Path=/', `Max-Age=${SESSION_DAYS * 86400}`, 'HttpOnly', 'SameSite=Lax']; if (process.env.VERCEL || process.env.NODE_ENV === 'production') parts.push('Secure'); res.setHeader('Set-Cookie', parts.join('; ')) }
+function clearCookie(res) { const parts = [`${SESSION_COOKIE}=`, 'Path=/', 'Max-Age=0', 'HttpOnly', 'SameSite=Lax']; if (process.env.VERCEL || process.env.NODE_ENV === 'production') parts.push('Secure'); res.setHeader('Set-Cookie', parts.join('; ')) }
+function sessionToken(req) { const raw = String(req.headers.cookie || ''); const match = raw.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`)); return match ? decodeURIComponent(match[1]) : null }
+async function sessionUser(d, req) { const token = sessionToken(req); if (!token || token.length < 32 || token.length > 256) return null; const r = await d.execute({ sql: 'SELECT u.id, u.email, u.name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > CURRENT_TIMESTAMP LIMIT 1', args: [sessionHash(token)] }); return r.rows[0] || null }
+async function createSession(d, userId, res) { const token = randomId(32); const expires = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString(); await d.execute({ sql: 'INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)', args: [randomId(16), userId, sessionHash(token), expires] }); cookie(res, token) }
+function requestIp(req) { const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim(); return forwarded || req.socket?.remoteAddress || 'unknown' }
+function allowAuthAttempt(req, bucket, limit = 8, windowMs = 15 * 60 * 1000) { const email = String(req.body?.email || '').trim().toLowerCase(); const key = `${bucket}:${requestIp(req)}:${email.slice(0, 254)}`; const now = Date.now(); const row = authWindows.get(key); if (!row || now - row.startedAt >= windowMs) { authWindows.set(key, { startedAt: now, count: 1 }); return true } if (row.count >= limit) return false; row.count += 1; if (authWindows.size > 5000) { for (const [k, v] of authWindows) { if (now - v.startedAt >= windowMs) authWindows.delete(k); if (authWindows.size <= 4000) break } } return true }
+function checkOrigin(req) { if (!['POST','PUT','PATCH','DELETE'].includes(req.method)) return true; const origin = req.headers.origin; if (!origin) return true; return origin === 'https://mangocode.vercel.app' || origin === 'https://mango-code.vercel.app' || origin === 'http://localhost:5173' || origin === 'http://localhost:4173' }
+async function hashPassword(password) { const salt = crypto.randomBytes(16); const derived = await new Promise((resolve, reject) => crypto.scrypt(password, salt, 32, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (err, key) => err ? reject(err) : resolve(key))); return `scrypt$${salt.toString('base64url')}$${Buffer.from(derived).toString('base64url')}` }
+async function verifyPassword(password, encoded) { const [kind, saltText, keyText] = String(encoded || '').split('$'); if (kind !== 'scrypt' || !saltText || !keyText) return false; try { const salt = Buffer.from(saltText, 'base64url'); const expected = Buffer.from(keyText, 'base64url'); const derived = await new Promise((resolve, reject) => crypto.scrypt(password, salt, expected.length, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (err, key) => err ? reject(err) : resolve(key))); return expected.length === derived.length && crypto.timingSafeEqual(expected, derived) } catch { return false } }
 async function accountUser(d, req) { return sessionUser(d, req) }
-
-async function ensureUser(d, req) {
-  const account = await accountUser(d, req)
-  if (account?.id) {
-    await d.execute({ sql: 'INSERT OR IGNORE INTO streaks (user_id) VALUES (?)', args: [account.id] })
-    return account.id
-  }
-  const id = userIdFrom(req)
-  if (!id) return null
-  await d.execute({ sql: 'INSERT OR IGNORE INTO users (id, email, name, password_hash) VALUES (?, ?, ?, NULL)', args: [id, `anonymous-${id}@mangocode.local`, 'MangoCoder'] })
-  await d.execute({ sql: 'INSERT OR IGNORE INTO streaks (user_id) VALUES (?)', args: [id] })
-  return id
-}
-
-async function touchStreak(d, userId) {
-  if (!userId) return
-  const today = new Date().toISOString().slice(0, 10)
-  const r = await d.execute({ sql: 'SELECT current_streak, longest_streak, last_active_date FROM streaks WHERE user_id = ?', args: [userId] })
-  const row = r.rows[0]
-  if (!row || row.last_active_date === today) return
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
-  const current = row.last_active_date === yesterday ? Number(row.current_streak) + 1 : 1
-  const longest = Math.max(Number(row.longest_streak), current)
-  await d.execute({ sql: 'UPDATE streaks SET current_streak = ?, longest_streak = ?, last_active_date = ? WHERE user_id = ?', args: [current, longest, today, userId] })
-}
-
-async function courseAccess(d, courseId, userId) {
-  const rows = await d.execute({ sql: 'SELECT id, title, sort_order, level, unit_type FROM lessons WHERE course_id = ? ORDER BY sort_order', args: [courseId] })
-  const completed = new Set()
-  if (userId) {
-    const p = await d.execute({ sql: 'SELECT lesson_id FROM progress WHERE user_id = ?', args: [userId] })
-    for (const row of p.rows) completed.add(row.lesson_id)
-  }
-  const tests = {}
-  if (userId) {
-    const t = await d.execute({ sql: 'SELECT lesson_id, MAX(passed) AS passed FROM test_attempts WHERE user_id = ? GROUP BY lesson_id', args: [userId] })
-    for (const row of t.rows) tests[row.lesson_id] = Number(row.passed) === 1
-  }
-  const output = []
-  for (const lesson of rows.rows) {
-    let unlocked = lesson.level === 'easy'
-    if (lesson.level === 'medium') unlocked = Boolean(tests[`${courseId}-easy-test`])
-    if (lesson.level === 'hard') unlocked = Boolean(tests[`${courseId}-medium-test`])
-    if (lesson.level === 'final') unlocked = Boolean(tests[`${courseId}-hard-test`])
-    if (lesson.unit_type === 'test') {
-      const levelLessons = rows.rows.filter((x) => x.level === lesson.level && x.unit_type === 'lesson')
-      unlocked = levelLessons.every((x) => completed.has(x.id))
-    }
-    if (lesson.unit_type === 'final') unlocked = Boolean(tests[`${courseId}-hard-test`])
-    output.push({ ...lesson, completed: completed.has(lesson.id), unlocked, passed: Boolean(tests[lesson.id]) })
-  }
-  return output
-}
-
-async function runtimes() {
-  if (Date.now() - runtimeCache.at < 3600000) return runtimeCache.map
-  const response = await fetch(`${PISTON_URL}/runtimes`)
-  if (!response.ok) throw new Error('Piston runtimes unavailable')
-  const list = await response.json()
-  const map = {}
-  for (const runtime of list) { map[runtime.language] = runtime.version; for (const alias of runtime.aliases || []) map[alias] = runtime.version }
-  runtimeCache = { at: Date.now(), map }
-  return map
-}
-
+async function ensureUser(d, req) { const account = await accountUser(d, req); if (account?.id) { await d.execute({ sql: 'INSERT OR IGNORE INTO streaks (user_id) VALUES (?)', args: [account.id] }); return account.id } const id = userIdFrom(req); if (!id) return null; await d.execute({ sql: 'INSERT OR IGNORE INTO users (id, email, name, password_hash) VALUES (?, ?, ?, NULL)', args: [id, `anonymous-${id}@mangocode.local`, 'MangoCoder'] }); await d.execute({ sql: 'INSERT OR IGNORE INTO streaks (user_id) VALUES (?)', args: [id] }); return id }
+async function touchStreak(d, userId) { if (!userId) return; const today = new Date().toISOString().slice(0, 10); const r = await d.execute({ sql: 'SELECT current_streak, longest_streak, last_active_date FROM streaks WHERE user_id = ?', args: [userId] }); const row = r.rows[0]; if (!row || row.last_active_date === today) return; const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10); const current = row.last_active_date === yesterday ? Number(row.current_streak) + 1 : 1; const longest = Math.max(Number(row.longest_streak), current); await d.execute({ sql: 'UPDATE streaks SET current_streak = ?, longest_streak = ?, last_active_date = ? WHERE user_id = ?', args: [current, longest, today, userId] }) }
+async function courseAccess(d, courseId, userId) { const rows = await d.execute({ sql: 'SELECT id, title, sort_order, level, unit_type FROM lessons WHERE course_id = ? ORDER BY sort_order', args: [courseId] }); const completed = new Set(); if (userId) { const p = await d.execute({ sql: 'SELECT lesson_id FROM progress WHERE user_id = ?', args: [userId] }); for (const row of p.rows) completed.add(row.lesson_id) } const tests = {}; if (userId) { const t = await d.execute({ sql: 'SELECT lesson_id, MAX(passed) AS passed FROM test_attempts WHERE user_id = ? GROUP BY lesson_id', args: [userId] }); for (const row of t.rows) tests[row.lesson_id] = Number(row.passed) === 1 } const output = []; for (const lesson of rows.rows) { let unlocked = lesson.level === 'easy'; if (lesson.level === 'medium') unlocked = Boolean(tests[`${courseId}-easy-test`]); if (lesson.level === 'hard') unlocked = Boolean(tests[`${courseId}-medium-test`]); if (lesson.level === 'final') unlocked = Boolean(tests[`${courseId}-hard-test`]); if (lesson.unit_type === 'test') { const levelLessons = rows.rows.filter((x) => x.level === lesson.level && x.unit_type === 'lesson'); unlocked = levelLessons.every((x) => completed.has(x.id)) } if (lesson.unit_type === 'final') unlocked = Boolean(tests[`${courseId}-hard-test`]); output.push({ ...lesson, completed: completed.has(lesson.id), unlocked, passed: Boolean(tests[lesson.id]) }) } return output }
+async function runtimes() { if (Date.now() - runtimeCache.at < 3600000) return runtimeCache.map; const response = await fetch(`${PISTON_URL}/runtimes`); if (!response.ok) throw new Error('Piston runtimes unavailable'); const list = await response.json(); const map = {}; for (const runtime of list) { map[runtime.language] = runtime.version; for (const alias of runtime.aliases || []) map[alias] = runtime.version } runtimeCache = { at: Date.now(), map }; return map }
 const languages = { javascript: ['javascript', 'main.js'], python: ['python', 'main.py'], c: ['c', 'main.c'], cpp: ['c++', 'main.cpp'] }
 
 export default async function handler(req, res) {
   const origin = req.headers.origin
   if (origin === 'https://mango-code.vercel.app' || origin === 'https://mangocode.vercel.app' || origin === 'http://localhost:5173') res.setHeader('Access-Control-Allow-Origin', origin)
-  res.setHeader('Vary', 'Origin')
-  res.setHeader('Access-Control-Allow-Credentials', 'true')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Mango-User')
-  res.setHeader('X-Content-Type-Options', 'nosniff')
-  res.setHeader('X-Frame-Options', 'DENY')
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
-  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('Vary', 'Origin'); res.setHeader('Access-Control-Allow-Credentials', 'true'); res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Mango-User'); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('X-Frame-Options', 'DENY'); res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin'); res.setHeader('Cache-Control', 'no-store')
   if (req.method === 'OPTIONS') return json(res, 204, {})
-
   try {
-    if (req.body === undefined && req.method !== 'GET' && req.method !== 'HEAD') {
-      let raw = ''
-      for await (const chunk of req) raw += chunk
-      if (raw.length > 32768) return json(res, 413, { error: 'Request too large.' })
-      try { req.body = raw ? JSON.parse(raw) : {} } catch { req.body = {} }
-    }
-    await init()
-    const d = database()
-    const url = new URL(req.url, 'https://mango-code.vercel.app')
-    const path = url.pathname.replace(/\/+$/, '') || '/'
-    if (!checkOrigin(req)) return json(res, 403, { error: 'Origin not allowed.' })
-
-    if (req.method === 'POST' && path === '/api/auth/register') {
-      const { email, password, name, guestId } = req.body || {}
-      const normalEmail = String(email || '').trim().toLowerCase()
-      if (!validEmail(normalEmail) || passwordBytes(password) < PASSWORD_MIN || passwordBytes(password) > PASSWORD_MAX) return json(res, 400, { error: `Use a valid email and a password between ${PASSWORD_MIN} and ${PASSWORD_MAX} UTF-8 bytes.` })
-      const displayName = String(name || '').trim().slice(0, 60) || 'MangoCoder'
-      const existing = await d.execute({ sql: 'SELECT id FROM users WHERE lower(email) = lower(?) AND password_hash IS NOT NULL LIMIT 1', args: [normalEmail] })
-      if (existing.rows.length) return json(res, 409, { error: 'An account with that email already exists.' })
-      const id = randomId(24)
-      const passwordHash = await hashPassword(String(password))
-      await d.execute({ sql: 'INSERT INTO users (id, email, name, password_hash) VALUES (?, ?, ?, ?)', args: [id, normalEmail, displayName, passwordHash] })
-      await d.execute({ sql: 'INSERT OR IGNORE INTO streaks (user_id) VALUES (?)', args: [id] })
-      if (/^[A-Za-z0-9_-]{16,80}$/.test(String(guestId || ''))) {
-        const guest = String(guestId)
-        await d.batch([
-          { sql: 'INSERT OR IGNORE INTO progress (user_id, lesson_id, completed_at) SELECT ?, lesson_id, completed_at FROM progress WHERE user_id = ?', args: [id, guest] },
-          { sql: 'INSERT OR IGNORE INTO exercise_attempts (user_id, exercise_id, passed, submitted_code, created_at) SELECT ?, exercise_id, passed, submitted_code, created_at FROM exercise_attempts WHERE user_id = ?', args: [id, guest] },
-          { sql: 'INSERT OR IGNORE INTO test_attempts (user_id, lesson_id, score, total, passed, created_at) SELECT ?, lesson_id, score, total, passed, created_at FROM test_attempts WHERE user_id = ?', args: [id, guest] },
-        ], 'write')
-      }
-      await createSession(d, id, res)
-      return json(res, 201, { user: { id, email: normalEmail, name: displayName } })
-    }
-
-    if (req.method === 'POST' && path === '/api/auth/login') {
-      const { email, password, guestId } = req.body || {}
-      const normalEmail = String(email || '').trim().toLowerCase()
-      if (!validEmail(normalEmail) || typeof password !== 'string' || passwordBytes(password) > PASSWORD_MAX) return json(res, 400, { error: 'Invalid email or password.' })
-      const found = await d.execute({ sql: 'SELECT id, email, name, password_hash FROM users WHERE lower(email) = lower(?) LIMIT 1', args: [normalEmail] })
-      const row = found.rows[0]
-      if (!row?.password_hash || !(await verifyPassword(password, row.password_hash))) return json(res, 401, { error: 'Invalid email or password.' })
-      if (/^[A-Za-z0-9_-]{16,80}$/.test(String(guestId || '')) && String(guestId) !== row.id) {
-        const guest = String(guestId)
-        await d.batch([
-          { sql: 'INSERT OR IGNORE INTO progress (user_id, lesson_id, completed_at) SELECT ?, lesson_id, completed_at FROM progress WHERE user_id = ?', args: [row.id, guest] },
-          { sql: 'INSERT OR IGNORE INTO exercise_attempts (user_id, exercise_id, passed, submitted_code, created_at) SELECT ?, exercise_id, passed, submitted_code, created_at FROM exercise_attempts WHERE user_id = ?', args: [row.id, guest] },
-          { sql: 'INSERT OR IGNORE INTO test_attempts (user_id, lesson_id, score, total, passed, created_at) SELECT ?, lesson_id, score, total, passed, created_at FROM test_attempts WHERE user_id = ?', args: [row.id, guest] },
-        ], 'write')
-      }
-      await createSession(d, row.id, res)
-      return json(res, 200, { user: { id: row.id, email: row.email, name: row.name } })
-    }
-
-    if (req.method === 'POST' && path === '/api/auth/logout') {
-      const token = sessionToken(req)
-      if (token) await d.execute({ sql: 'DELETE FROM sessions WHERE token_hash = ?', args: [sessionHash(token)] })
-      clearCookie(res)
-      return json(res, 200, { ok: true })
-    }
+    if (req.body === undefined && req.method !== 'GET' && req.method !== 'HEAD') { let raw = ''; for await (const chunk of req) raw += chunk; if (raw.length > 32768) return json(res, 413, { error: 'Request too large.' }); try { req.body = raw ? JSON.parse(raw) : {} } catch { req.body = {} } }
+    await init(); const d = database(); const url = new URL(req.url, 'https://mango-code.vercel.app'); const path = url.pathname.replace(/\/+$/, '') || '/'; if (!checkOrigin(req)) return json(res, 403, { error: 'Origin not allowed.' })
+    if (req.method === 'POST' && path === '/api/auth/register') { if (!allowAuthAttempt(req, 'register', 5)) return json(res, 429, { error: 'Too many account-creation attempts. Please try again later.' }); const { email, password, name, guestId } = req.body || {}; const normalEmail = String(email || '').trim().toLowerCase(); if (!validEmail(normalEmail) || passwordBytes(password) < PASSWORD_MIN || passwordBytes(password) > PASSWORD_MAX) return json(res, 400, { error: `Use a valid email and a password between ${PASSWORD_MIN} and ${PASSWORD_MAX} UTF-8 bytes.` }); const displayName = String(name || '').trim().slice(0, 60) || 'MangoCoder'; const existing = await d.execute({ sql: 'SELECT id FROM users WHERE lower(email) = lower(?) AND password_hash IS NOT NULL LIMIT 1', args: [normalEmail] }); if (existing.rows.length) return json(res, 409, { error: 'An account with that email already exists.' }); const id = randomId(24); const passwordHash = await hashPassword(String(password)); await d.execute({ sql: 'INSERT INTO users (id, email, name, password_hash) VALUES (?, ?, ?, ?)', args: [id, normalEmail, displayName, passwordHash] }); await d.execute({ sql: 'INSERT OR IGNORE INTO streaks (user_id) VALUES (?)', args: [id] }); if (/^[A-Za-z0-9_-]{16,80}$/.test(String(guestId || ''))) { const guest = String(guestId); await d.batch([{ sql: 'INSERT OR IGNORE INTO progress (user_id, lesson_id, completed_at) SELECT ?, lesson_id, completed_at FROM progress WHERE user_id = ?', args: [id, guest] }, { sql: 'INSERT OR IGNORE INTO exercise_attempts (user_id, exercise_id, passed, submitted_code, created_at) SELECT ?, exercise_id, passed, submitted_code, created_at FROM exercise_attempts WHERE user_id = ?', args: [id, guest] }, { sql: 'INSERT OR IGNORE INTO test_attempts (user_id, lesson_id, score, total, passed, created_at) SELECT ?, lesson_id, score, total, passed, created_at FROM test_attempts WHERE user_id = ?', args: [id, guest] }], 'write') } await createSession(d, id, res); return json(res, 201, { user: { id, email: normalEmail, name: displayName } }) }
+    if (req.method === 'POST' && path === '/api/auth/login') { if (!allowAuthAttempt(req, 'login', 8)) return json(res, 429, { error: 'Too many sign-in attempts. Please try again later.' }); const { email, password, guestId } = req.body || {}; const normalEmail = String(email || '').trim().toLowerCase(); if (!validEmail(normalEmail) || typeof password !== 'string' || passwordBytes(password) > PASSWORD_MAX) return json(res, 400, { error: 'Invalid email or password.' }); const found = await d.execute({ sql: 'SELECT id, email, name, password_hash FROM users WHERE lower(email) = lower(?) LIMIT 1', args: [normalEmail] }); const row = found.rows[0]; if (!row?.password_hash || !(await verifyPassword(password, row.password_hash))) return json(res, 401, { error: 'Invalid email or password.' }); if (/^[A-Za-z0-9_-]{16,80}$/.test(String(guestId || '')) && String(guestId) !== row.id) { const guest = String(guestId); await d.batch([{ sql: 'INSERT OR IGNORE INTO progress (user_id, lesson_id, completed_at) SELECT ?, lesson_id, completed_at FROM progress WHERE user_id = ?', args: [row.id, guest] }, { sql: 'INSERT OR IGNORE INTO exercise_attempts (user_id, exercise_id, passed, submitted_code, created_at) SELECT ?, exercise_id, passed, submitted_code, created_at FROM exercise_attempts WHERE user_id = ?', args: [row.id, guest] }, { sql: 'INSERT OR IGNORE INTO test_attempts (user_id, lesson_id, score, total, passed, created_at) SELECT ?, lesson_id, score, total, passed, created_at FROM test_attempts WHERE user_id = ?', args: [row.id, guest] }], 'write') } await createSession(d, row.id, res); return json(res, 200, { user: { id: row.id, email: row.email, name: row.name } }) }
+    if (req.method === 'POST' && path === '/api/auth/logout') { const token = sessionToken(req); if (token) await d.execute({ sql: 'DELETE FROM sessions WHERE token_hash = ?', args: [sessionHash(token)] }); clearCookie(res); return json(res, 200, { ok: true }) }
     if (req.method === 'GET' && path === '/api/auth/me') return json(res, 200, { user: await accountUser(d, req) })
     if (req.method === 'GET' && path === '/api/health') return json(res, 200, { ok: true, database: true })
-
     const userId = await ensureUser(d, req)
-    if (req.method === 'GET' && path === '/api/courses') {
-      const r = await d.execute('SELECT * FROM courses ORDER BY sort_order')
-      res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300')
-      return json(res, 200, r.rows)
-    }
-    const cm = path.match(/^\/api\/courses\/([^/]+)\/lessons$/)
-    if (req.method === 'GET' && cm) return json(res, 200, await courseAccess(d, cm[1], userId))
-    if (req.method === 'GET' && path === '/api/progress') {
-      if (!userId) return json(res, 200, { user: null, completed: [], tests: [], streak: null })
-      const [p, t, s] = await Promise.all([
-        d.execute({ sql: 'SELECT lesson_id, completed_at FROM progress WHERE user_id = ?', args: [userId] }),
-        d.execute({ sql: 'SELECT lesson_id, score, total, passed, created_at FROM test_attempts WHERE user_id = ? ORDER BY created_at DESC', args: [userId] }),
-        d.execute({ sql: 'SELECT current_streak, longest_streak, last_active_date FROM streaks WHERE user_id = ?', args: [userId] }),
-      ])
-      return json(res, 200, { user: userId, completed: p.rows, tests: t.rows, streak: s.rows[0] || null })
-    }
-    const lm = path.match(/^\/api\/lessons\/([^/]+)$/)
-    if (req.method === 'GET' && lm) {
-      const lesson = await d.execute({ sql: 'SELECT * FROM lessons WHERE id = ?', args: [lm[1]] })
-      if (!lesson.rows.length) return json(res, 404, { error: 'Lesson not found' })
-      const row = lesson.rows[0]
-      const access = await courseAccess(d, row.course_id, userId)
-      const state = access.find((x) => x.id === row.id)
-      if (state && !state.unlocked) return json(res, 403, { error: 'This unit is locked until you complete the previous checkpoint.' })
-      const [ex, quiz] = await Promise.all([
-        d.execute({ sql: 'SELECT id, language, prompt, starter_code FROM exercises WHERE lesson_id = ?', args: [lm[1]] }),
-        d.execute({ sql: 'SELECT id, question, options FROM quiz_questions WHERE lesson_id = ? ORDER BY id', args: [lm[1]] }),
-      ])
-      return json(res, 200, { ...row, completed: state?.completed || false, passed: state?.passed || false, exercises: ex.rows, quiz: quiz.rows.map((q) => ({ id: q.id, question: q.question, options: JSON.parse(q.options) })) })
-    }
-    if (req.method === 'POST' && path === '/api/progress/complete') {
-      if (!userId) return json(res, 401, { error: 'Progress requires a browser user id.' })
-      const { lessonId } = req.body || {}
-      if (typeof lessonId !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(lessonId)) return json(res, 400, { error: 'Invalid lessonId.' })
-      const lesson = await d.execute({ sql: 'SELECT id, course_id, level, unit_type FROM lessons WHERE id = ?', args: [lessonId] })
-      if (!lesson.rows.length) return json(res, 404, { error: 'Lesson not found.' })
-      const row = lesson.rows[0]
-      if (row.unit_type !== 'lesson') return json(res, 400, { error: 'Tests must be submitted through the test endpoint.' })
-      const access = await courseAccess(d, row.course_id, userId)
-      const state = access.find((x) => x.id === lessonId)
-      if (!state?.unlocked) return json(res, 403, { error: 'This lesson is locked.' })
-      await d.execute({ sql: 'INSERT OR REPLACE INTO progress (user_id, lesson_id, completed_at) VALUES (?, ?, CURRENT_TIMESTAMP)', args: [userId, lessonId] })
-      await touchStreak(d, userId)
-      return json(res, 200, { ok: true, lessonId })
-    }
-    if (req.method === 'POST' && path === '/api/quiz/check') {
-      const { questionId, selectedIndex } = req.body || {}
-      if (typeof questionId !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(questionId) || !Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex > 20) return json(res, 400, { error: 'Invalid answer' })
-      const r = await d.execute({ sql: 'SELECT correct_index FROM quiz_questions WHERE id = ?', args: [questionId] })
-      if (!r.rows.length) return json(res, 404, { error: 'Question not found' })
-      const correct = selectedIndex === Number(r.rows[0].correct_index)
-      return json(res, 200, { correct, message: correct ? 'Correct!' : 'Not quite — try another answer.' })
-    }
-    if (req.method === 'POST' && path === '/api/tests/submit') {
-      if (!userId) return json(res, 401, { error: 'Progress requires a browser user id.' })
-      const { lessonId, answers } = req.body || {}
-      if (typeof lessonId !== 'string' || !Array.isArray(answers) || answers.length > 30) return json(res, 400, { error: 'Invalid test submission.' })
-      const lesson = await d.execute({ sql: 'SELECT * FROM lessons WHERE id = ?', args: [lessonId] })
-      if (!lesson.rows.length || !['test', 'final'].includes(lesson.rows[0].unit_type)) return json(res, 400, { error: 'Not a test.' })
-      const row = lesson.rows[0]
-      const access = await courseAccess(d, row.course_id, userId)
-      const state = access.find((x) => x.id === lessonId)
-      if (!state?.unlocked) return json(res, 403, { error: 'This test is locked.' })
-      const qs = await d.execute({ sql: 'SELECT id, correct_index FROM quiz_questions WHERE lesson_id = ? ORDER BY id', args: [lessonId] })
-      const map = new Map(answers.map((a) => [String(a.questionId), Number(a.selectedIndex)]))
-      let score = 0
-      for (const q of qs.rows) if (map.get(q.id) === Number(q.correct_index)) score++
-      const total = qs.rows.length
-      const required = Math.min(8, total)
-      const passed = score >= required
-      await d.execute({ sql: 'INSERT INTO test_attempts (user_id, lesson_id, score, total, passed) VALUES (?, ?, ?, ?, ?)', args: [userId, lessonId, score, total, passed ? 1 : 0] })
-      if (passed) await d.execute({ sql: 'INSERT OR REPLACE INTO progress (user_id, lesson_id, completed_at) VALUES (?, ?, CURRENT_TIMESTAMP)', args: [userId, lessonId] })
-      await touchStreak(d, userId)
-      return json(res, 200, { score, total, required, passed, message: passed ? 'Checkpoint passed! Next section unlocked.' : `You need ${required}/${total} to pass. Try again.` })
-    }
-    if (req.method === 'POST' && path === '/api/exercises/check') {
-      if (!userId) return json(res, 401, { pass: false, message: 'Progress requires a browser user id.' })
-      const { exerciseId, code } = req.body || {}
-      if (typeof exerciseId !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(exerciseId) || typeof code !== 'string') return json(res, 400, { pass: false, message: 'Invalid exercise or code.' })
-      if (code.length > 20000) return json(res, 413, { pass: false, message: 'Code is too long.' })
-      const r = await d.execute({ sql: 'SELECT * FROM exercises WHERE id = ?', args: [exerciseId] })
-      const exercise = r.rows[0]
-      if (!exercise) return json(res, 404, { pass: false, message: 'Exercise not found.' })
-      const config = languages[exercise.language]
-      if (!config) return json(res, 400, { pass: false, message: 'Unsupported language.' })
-      const version = (await runtimes())[config[0]]
-      if (!version) return json(res, 503, { pass: false, message: 'This runtime is unavailable.' })
-      const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 10000)
-      let response
-      try { response = await fetch(`${PISTON_URL}/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, signal: controller.signal, body: JSON.stringify({ language: config[0], version, files: [{ name: config[1], content: code }], stdin: String(exercise.test_input || '').slice(0, 4000), run_timeout: 3000, run_cpu_time: 3000, run_memory_limit: 64 * 1024 * 1024, compile_timeout: 5000, compile_cpu_time: 5000, compile_memory_limit: 128 * 1024 * 1024 }) }) } finally { clearTimeout(timer) }
-      if (!response.ok) return json(res, response.status === 429 ? 429 : 502, { pass: false, message: 'Code runner unavailable. Please try again.' })
-      const data = await response.json(); const run = data.run || {}
-      const actual = String(run.stdout || '').trim(); const expected = String(exercise.expected_output || '').trim(); const pass = run.code === 0 && actual === expected
-      await d.execute({ sql: 'INSERT INTO exercise_attempts (user_id, exercise_id, passed, submitted_code) VALUES (?, ?, ?, ?)', args: [userId, exerciseId, pass ? 1 : 0, code] })
-      if (pass) await touchStreak(d, userId)
-      if (run.code !== 0) return json(res, 200, { pass: false, message: 'Your code produced an error. Fix it and try again.', stderr: String(run.stderr || '').slice(0, 2000) })
-      return json(res, 200, { pass, message: pass ? 'Correct! Your output matched.' : 'Not quite. Check your output and try again.', stdout: String(run.stdout || '').slice(0, 4000) })
-    }
+    if (req.method === 'GET' && path === '/api/courses') { const r = await d.execute('SELECT * FROM courses ORDER BY sort_order'); res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300'); return json(res, 200, r.rows) }
+    const cm = path.match(/^\/api\/courses\/([^/]+)\/lessons$/); if (req.method === 'GET' && cm) return json(res, 200, await courseAccess(d, cm[1], userId))
+    if (req.method === 'GET' && path === '/api/progress') { if (!userId) return json(res, 200, { user: null, completed: [], tests: [], streak: null }); const [p, t, s] = await Promise.all([d.execute({ sql: 'SELECT lesson_id, completed_at FROM progress WHERE user_id = ?', args: [userId] }), d.execute({ sql: 'SELECT lesson_id, score, total, passed, created_at FROM test_attempts WHERE user_id = ? ORDER BY created_at DESC', args: [userId] }), d.execute({ sql: 'SELECT current_streak, longest_streak, last_active_date FROM streaks WHERE user_id = ?', args: [userId] })]); return json(res, 200, { user: userId, completed: p.rows, tests: t.rows, streak: s.rows[0] || null }) }
+    const lm = path.match(/^\/api\/lessons\/([^/]+)$/); if (req.method === 'GET' && lm) { const lesson = await d.execute({ sql: 'SELECT * FROM lessons WHERE id = ?', args: [lm[1]] }); if (!lesson.rows.length) return json(res, 404, { error: 'Lesson not found' }); const row = lesson.rows[0]; const access = await courseAccess(d, row.course_id, userId); const state = access.find((x) => x.id === row.id); if (state && !state.unlocked) return json(res, 403, { error: 'This unit is locked until you complete the previous checkpoint.' }); const [ex, quiz] = await Promise.all([d.execute({ sql: 'SELECT id, language, prompt, starter_code FROM exercises WHERE lesson_id = ?', args: [lm[1]] }), d.execute({ sql: 'SELECT id, question, options FROM quiz_questions WHERE lesson_id = ? ORDER BY id', args: [lm[1]] })]); return json(res, 200, { ...row, completed: state?.completed || false, passed: state?.passed || false, exercises: ex.rows, quiz: quiz.rows.map((q) => ({ id: q.id, question: q.question, options: JSON.parse(q.options) })) }) }
+    if (req.method === 'POST' && path === '/api/progress/complete') { if (!userId) return json(res, 401, { error: 'Progress requires a browser user id.' }); const { lessonId } = req.body || {}; if (typeof lessonId !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(lessonId)) return json(res, 400, { error: 'Invalid lessonId.' }); const lesson = await d.execute({ sql: 'SELECT id, course_id, level, unit_type FROM lessons WHERE id = ?', args: [lessonId] }); if (!lesson.rows.length) return json(res, 404, { error: 'Lesson not found.' }); const row = lesson.rows[0]; if (row.unit_type !== 'lesson') return json(res, 400, { error: 'Tests must be submitted through the test endpoint.' }); const access = await courseAccess(d, row.course_id, userId); const state = access.find((x) => x.id === lessonId); if (!state?.unlocked) return json(res, 403, { error: 'This lesson is locked.' }); await d.execute({ sql: 'INSERT OR REPLACE INTO progress (user_id, lesson_id, completed_at) VALUES (?, ?, CURRENT_TIMESTAMP)', args: [userId, lessonId] }); await touchStreak(d, userId); return json(res, 200, { ok: true, lessonId }) }
+    if (req.method === 'POST' && path === '/api/quiz/check') { const { questionId, selectedIndex } = req.body || {}; if (typeof questionId !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(questionId) || !Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex > 20) return json(res, 400, { error: 'Invalid answer' }); const r = await d.execute({ sql: 'SELECT correct_index FROM quiz_questions WHERE id = ?', args: [questionId] }); if (!r.rows.length) return json(res, 404, { error: 'Question not found' }); const correct = selectedIndex === Number(r.rows[0].correct_index); return json(res, 200, { correct, message: correct ? 'Correct!' : 'Not quite — try another answer.' }) }
+    if (req.method === 'POST' && path === '/api/tests/submit') { if (!userId) return json(res, 401, { error: 'Progress requires a browser user id.' }); const { lessonId, answers } = req.body || {}; if (typeof lessonId !== 'string' || !Array.isArray(answers) || answers.length > 30) return json(res, 400, { error: 'Invalid test submission.' }); const lesson = await d.execute({ sql: 'SELECT * FROM lessons WHERE id = ?', args: [lessonId] }); if (!lesson.rows.length || !['test', 'final'].includes(lesson.rows[0].unit_type)) return json(res, 400, { error: 'Not a test.' }); const row = lesson.rows[0]; const access = await courseAccess(d, row.course_id, userId); const state = access.find((x) => x.id === lessonId); if (!state?.unlocked) return json(res, 403, { error: 'This test is locked.' }); const qs = await d.execute({ sql: 'SELECT id, correct_index FROM quiz_questions WHERE lesson_id = ? ORDER BY id', args: [lessonId] }); const map = new Map(answers.map((a) => [String(a.questionId), Number(a.selectedIndex)])); let score = 0; for (const q of qs.rows) if (map.get(q.id) === Number(q.correct_index)) score++; const total = qs.rows.length; const required = Math.min(8, total); const passed = score >= required; await d.execute({ sql: 'INSERT INTO test_attempts (user_id, lesson_id, score, total, passed) VALUES (?, ?, ?, ?, ?)', args: [userId, lessonId, score, total, passed ? 1 : 0] }); if (passed) await d.execute({ sql: 'INSERT OR REPLACE INTO progress (user_id, lesson_id, completed_at) VALUES (?, ?, CURRENT_TIMESTAMP)', args: [userId, lessonId] }); await touchStreak(d, userId); return json(res, 200, { score, total, required, passed, message: passed ? 'Checkpoint passed! Next section unlocked.' : `You need ${required}/${total} to pass. Try again.` }) }
+    if (req.method === 'POST' && path === '/api/exercises/check') { if (!userId) return json(res, 401, { pass: false, message: 'Progress requires a browser user id.' }); const { exerciseId, code } = req.body || {}; if (typeof exerciseId !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(exerciseId) || typeof code !== 'string') return json(res, 400, { pass: false, message: 'Invalid exercise or code.' }); if (code.length > 20000) return json(res, 413, { pass: false, message: 'Code is too long.' }); const r = await d.execute({ sql: 'SELECT * FROM exercises WHERE id = ?', args: [exerciseId] }); const exercise = r.rows[0]; if (!exercise) return json(res, 404, { pass: false, message: 'Exercise not found.' }); const config = languages[exercise.language]; if (!config) return json(res, 400, { pass: false, message: 'Unsupported language.' }); const version = (await runtimes())[config[0]]; if (!version) return json(res, 503, { pass: false, message: 'This runtime is unavailable.' }); const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 10000); let response; try { response = await fetch(`${PISTON_URL}/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, signal: controller.signal, body: JSON.stringify({ language: config[0], version, files: [{ name: config[1], content: code }], stdin: String(exercise.test_input || '').slice(0, 4000), run_timeout: 3000, run_cpu_time: 3000, run_memory_limit: 64 * 1024 * 1024, compile_timeout: 5000, compile_cpu_time: 5000, compile_memory_limit: 128 * 1024 * 1024 }) }) } finally { clearTimeout(timer) } if (!response.ok) return json(res, response.status === 429 ? 429 : 502, { pass: false, message: 'Code runner unavailable. Please try again.' }); const data = await response.json(); const run = data.run || {}; const actual = String(run.stdout || '').trim(); const expected = String(exercise.expected_output || '').trim(); const pass = run.code === 0 && actual === expected; await d.execute({ sql: 'INSERT INTO exercise_attempts (user_id, exercise_id, passed, submitted_code) VALUES (?, ?, ?, ?)', args: [userId, exerciseId, pass ? 1 : 0, code] }); if (pass) await touchStreak(d, userId); if (run.code !== 0) return json(res, 200, { pass: false, message: 'Your code produced an error. Fix it and try again.', stderr: String(run.stderr || '').slice(0, 2000) }); return json(res, 200, { pass, message: pass ? 'Correct! Your output matched.' : 'Not quite. Check your output and try again.', stdout: String(run.stdout || '').slice(0, 4000) }) }
     return json(res, 404, { error: 'Not found' })
-  } catch (error) {
-    console.error('MangoCode API error', error?.message || error)
-    return json(res, 500, { error: 'Internal server error' })
-  }
+  } catch (error) { console.error('MangoCode API error', error?.message || error); return json(res, 500, { error: 'Internal server error' }) }
 }
