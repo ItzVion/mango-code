@@ -9,6 +9,7 @@ export function ExerciseBlock({ id, prompt, starterCode }) {
   const [loading, setLoading] = useState(false)
 
   async function runCheck() {
+    if (loading) return
     setLoading(true)
     setResult(null)
     try {
@@ -17,10 +18,14 @@ export function ExerciseBlock({ id, prompt, starterCode }) {
         headers: apiHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ exerciseId: id, code }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setResult({ pass: false, message: data.message || data.error || 'The code runner could not check this yet. Please try again.' })
+        return
+      }
       setResult(data)
     } catch {
-      setResult({ pass: false, message: 'Could not reach the server.' })
+      setResult({ pass: false, message: 'Could not reach the code runner. Please try again.' })
     } finally {
       setLoading(false)
     }
