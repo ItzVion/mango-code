@@ -39,6 +39,16 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
+  password_hash TEXT,
+  google_sub TEXT UNIQUE,
+  auth_provider TEXT NOT NULL DEFAULT 'password',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -80,3 +90,4 @@ CREATE INDEX IF NOT EXISTS idx_quiz_lesson ON quiz_questions(lesson_id);
 CREATE INDEX IF NOT EXISTS idx_exercises_lesson ON exercises(lesson_id);
 CREATE INDEX IF NOT EXISTS idx_progress_user ON progress(user_id);
 CREATE INDEX IF NOT EXISTS idx_test_attempts_user ON test_attempts(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
