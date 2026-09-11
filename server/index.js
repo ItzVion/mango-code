@@ -6,6 +6,7 @@ import { exercisesRouter } from './routes/exercises.js'
 
 const app = express()
 app.disable('x-powered-by')
+app.set('trust proxy', 1)
 
 const allowedOrigins = [
   process.env.CLIENT_URL,
@@ -20,7 +21,10 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()')
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
-  if (process.env.NODE_ENV === 'production' || process.env.VERCEL) res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains')
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+  if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
+  }
   next()
 })
 
@@ -46,7 +50,7 @@ function rateLimit(key, limit, windowMs) {
     row.count += 1
   }
 
-  // Prevent an attacker from filling the process with unique limiter keys.
+  // Bound memory even if an attacker rotates source IPs.
   if (requestWindows.size > 10_000) {
     for (const [storedKey, stored] of requestWindows) {
       if (now - stored.startedAt >= windowMs) requestWindows.delete(storedKey)
@@ -56,12 +60,21 @@ function rateLimit(key, limit, windowMs) {
   return true
 }
 
+function requestIp(req) {
+  return req.ip || req.socket.remoteAddress || 'unknown'
+}
+
 app.use('/api/exercises', (req, res, next) => {
-  const forwarded = req.headers['x-forwarded-for']
-  const ip = Array.isArray(forwarded)
-    ? forwarded[0]
-    : String(forwarded || req.socket.remoteAddress || 'unknown').split(',')[0].trim()
-  if (!rateLimit(`exercise:${ip}`, 20, 60_000)) return res.status(429).json({ error: 'Too many code runs. Please wait a minute and try again.' })
+  if (!rateLimit(`exercise:${requestIp(req)}`, 20, 60_000)) {
+    return res.status(429).json({ error: 'Too many code runs. Please wait a minute and try again.' })
+  }
+  next()
+})
+
+app.use('/api/quiz/check', (req, res, next) => {
+  if (!rateLimit(`quiz:${requestIp(req)}`, 60, 60_000)) {
+    return res.status(429).json({ error: 'Too many quiz checks. Please slow down.' })
+  }
   next()
 })
 
