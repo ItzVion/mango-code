@@ -24,6 +24,7 @@ app.use((req, res, next) => {
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()')
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+  res.setHeader('X-DNS-Prefetch-Control', 'off')
   if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
     res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
   }
@@ -39,6 +40,14 @@ app.use(cors({
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'X-Mango-User'],
 }))
+
+app.use((req, res, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    const origin = req.headers.origin
+    if (origin && !allowedOrigins.includes(origin)) return res.status(403).json({ error: 'Origin not allowed.' })
+  }
+  next()
+})
 
 app.use(express.json({ limit: '32kb', strict: true }))
 
