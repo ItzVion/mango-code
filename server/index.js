@@ -34,7 +34,7 @@ app.use((req, res, next) => {
 app.use(cors({
   origin(origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) return callback(null, true)
-    return callback(new Error('Origin not allowed'))
+    return callback(null, false)
   },
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
