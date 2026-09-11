@@ -1,19 +1,13 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { CheckCircle2, RotateCcw, XCircle } from 'lucide-react'
+import { CheckCircle2, RotateCcw, XCircle, Brain } from 'lucide-react'
 import { apiHeaders } from '../../lib/user'
 
 function Celebration() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl" aria-hidden="true">
       {Array.from({ length: 16 }, (_, i) => (
-        <motion.span
-          key={i}
-          initial={{ opacity: 1, x: '50%', y: '45%', scale: 0.4, rotate: 0 }}
-          animate={{ opacity: 0, x: `${8 + ((i * 67) % 84)}%`, y: `${4 + ((i * 43) % 84)}%`, scale: 1, rotate: i * 53 }}
-          transition={{ duration: 0.8, delay: i * 0.015, ease: 'easeOut' }}
-          className="absolute h-2 w-2 rounded-sm bg-mango"
-        />
+        <motion.span key={i} initial={{ opacity: 1, x: '50%', y: '45%', scale: 0.4, rotate: 0 }} animate={{ opacity: 0, x: `${8 + ((i * 67) % 84)}%`, y: `${4 + ((i * 43) % 84)}%`, scale: 1, rotate: i * 53 }} transition={{ duration: 0.8, delay: i * 0.015, ease: 'easeOut' }} className="absolute h-2 w-2 rounded-sm bg-mango" />
       ))}
     </div>
   )
@@ -61,6 +55,10 @@ export function QuizBlock({ id, question, options, onAnswered }) {
           <span className="rounded-full bg-mango/15 px-3 py-1 text-xs font-semibold text-ink">Quick check</span>
           <motion.span animate={result?.correct ? { rotate: [0, -12, 12, 0], scale: [1, 1.25, 1] } : {}} className="text-lg">🧠</motion.span>
         </div>
+        <div className="mb-4 flex items-start gap-3 rounded-xl bg-mango/10 p-3 text-sm leading-6 text-ink-soft">
+          <Brain size={17} className="mt-0.5 shrink-0 text-mango" />
+          <span><strong className="text-ink">Think first.</strong> Pick the answer you believe is right — getting one wrong is part of learning.</span>
+        </div>
         <p className="text-lg font-semibold leading-7">{question}</p>
         <div className="mt-5 flex flex-col gap-2.5">
           {options.map((opt, i) => {
@@ -68,19 +66,7 @@ export function QuizBlock({ id, question, options, onAnswered }) {
             const isWrongPick = result && isSelected && !result.correct
             const isCorrectPick = result && isSelected && result.correct
             return (
-              <motion.button
-                key={i}
-                type="button"
-                whileHover={!result || !result.correct ? { x: 4, scale: 1.01 } : {}}
-                whileTap={!result || !result.correct ? { scale: 0.985 } : {}}
-                onClick={() => pick(i)}
-                disabled={loading || Boolean(result?.correct)}
-                className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm transition-colors disabled:cursor-default ${
-                  isCorrectPick ? 'border-leaf/40 bg-leaf/10 text-leaf' :
-                  isWrongPick ? 'border-rose/40 bg-rose/10 text-rose' :
-                  'border-ink/10 bg-paper hover:border-mango/50 hover:bg-mango/5'
-                }`}
-              >
+              <motion.button key={i} type="button" whileHover={!result || !result.correct ? { x: 4, scale: 1.01 } : {}} whileTap={!result || !result.correct ? { scale: 0.985 } : {}} onClick={() => pick(i)} disabled={loading || Boolean(result?.correct)} className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm transition-colors disabled:cursor-default ${isCorrectPick ? 'border-leaf/40 bg-leaf/10 text-leaf' : isWrongPick ? 'border-rose/40 bg-rose/10 text-rose' : 'border-ink/10 bg-paper hover:border-mango/50 hover:bg-mango/5'}`}>
                 <span>{opt}</span>
                 {isCorrectPick && <CheckCircle2 size={18} />}
                 {isWrongPick && <XCircle size={18} />}
