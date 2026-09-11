@@ -1,9 +1,14 @@
 import { createClient } from '@libsql/client'
+import crypto from 'node:crypto'
 
 const PISTON_URL = process.env.PISTON_URL || 'https://emkc.org/api/v2/piston'
 let db
 let initialized
 let runtimeCache = { at: 0, map: {} }
+const SESSION_COOKIE = 'mc_session'
+const SESSION_DAYS = 30
+const PASSWORD_MIN = 8
+const PASSWORD_MAX = 128
 
 function database() {
   if (!db) {
@@ -22,13 +27,14 @@ async function init() {
       { sql: 'CREATE TABLE IF NOT EXISTS lessons (id TEXT PRIMARY KEY, course_id TEXT NOT NULL REFERENCES courses(id), title TEXT NOT NULL, content TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0)', args: [] },
       { sql: 'CREATE TABLE IF NOT EXISTS exercises (id TEXT PRIMARY KEY, lesson_id TEXT NOT NULL REFERENCES lessons(id), language TEXT NOT NULL, prompt TEXT NOT NULL, starter_code TEXT DEFAULT "", test_input TEXT DEFAULT "", expected_output TEXT NOT NULL)', args: [] },
       { sql: 'CREATE TABLE IF NOT EXISTS quiz_questions (id TEXT PRIMARY KEY, lesson_id TEXT NOT NULL REFERENCES lessons(id), question TEXT NOT NULL, options TEXT NOT NULL, correct_index INTEGER NOT NULL)', args: [] },
-      { sql: 'CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, name TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)', args: [] },
+      { sql: 'CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, name TEXT NOT NULL, password_hash TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)', args: [] },
+      { sql: 'CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), token_hash TEXT UNIQUE NOT NULL, expires_at TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)', args: [] },
       { sql: 'CREATE TABLE IF NOT EXISTS progress (user_id TEXT NOT NULL REFERENCES users(id), lesson_id TEXT NOT NULL REFERENCES lessons(id), completed_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (user_id, lesson_id))', args: [] },
       { sql: 'CREATE TABLE IF NOT EXISTS exercise_attempts (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES users(id), exercise_id TEXT NOT NULL REFERENCES exercises(id), passed INTEGER NOT NULL, submitted_code TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)', args: [] },
       { sql: 'CREATE TABLE IF NOT EXISTS streaks (user_id TEXT PRIMARY KEY REFERENCES users(id), current_streak INTEGER NOT NULL DEFAULT 0, longest_streak INTEGER NOT NULL DEFAULT 0, last_active_date TEXT)', args: [] },
       { sql: 'CREATE TABLE IF NOT EXISTS test_attempts (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES users(id), lesson_id TEXT NOT NULL REFERENCES lessons(id), score INTEGER NOT NULL, total INTEGER NOT NULL, passed INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)', args: [] },
     ], 'write')
-    for (const sql of ['ALTER TABLE lessons ADD COLUMN level TEXT NOT NULL DEFAULT "easy"', 'ALTER TABLE lessons ADD COLUMN unit_type TEXT NOT NULL DEFAULT "lesson"']) {
+    for (const sql of ['ALTER TABLE lessons ADD COLUMN level TEXT NOT NULL DEFAULT "easy"', 'ALTER TABLE lessons ADD COLUMN unit_type TEXT NOT NULL DEFAULT "lesson"', 'ALTER TABLE users ADD COLUMN password_hash TEXT']) {
       try { await d.execute(sql) } catch (error) { if (!String(error?.message || error).toLowerCase().includes('duplicate column')) throw error }
     }
     await d.batch([
@@ -37,6 +43,8 @@ async function init() {
       { sql: 'CREATE INDEX IF NOT EXISTS idx_exercises_lesson ON exercises(lesson_id)', args: [] },
       { sql: 'CREATE INDEX IF NOT EXISTS idx_progress_user ON progress(user_id)', args: [] },
       { sql: 'CREATE INDEX IF NOT EXISTS idx_test_attempts_user ON test_attempts(user_id)', args: [] },
+      { sql: 'CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)', args: [] },
+      { sql: 'CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)', args: [] },
     ], 'write')
   })().catch((error) => { initialized = null; throw error })
   return initialized
@@ -52,11 +60,69 @@ function userIdFrom(req) {
   const value = String(req.headers['x-mango-user'] || '').trim()
   return /^[A-Za-z0-9_-]{16,80}$/.test(value) ? value : null
 }
+function sessionHash(token) { return crypto.createHash('sha256').update(token).digest('hex') }
+function randomId(bytes = 24) { return crypto.randomBytes(bytes).toString('base64url') }
+function validEmail(value) { return typeof value === 'string' && value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) }
+function passwordBytes(value) { return Buffer.byteLength(String(value || ''), 'utf8') }
+function cookie(res, token) {
+  const parts = [`${SESSION_COOKIE}=${encodeURIComponent(token)}`, 'Path=/', `Max-Age=${SESSION_DAYS * 86400}`, 'HttpOnly', 'SameSite=Lax']
+  if (process.env.VERCEL || process.env.NODE_ENV === 'production') parts.push('Secure')
+  res.setHeader('Set-Cookie', parts.join('; '))
+}
+function clearCookie(res) {
+  const parts = [`${SESSION_COOKIE}=`, 'Path=/', 'Max-Age=0', 'HttpOnly', 'SameSite=Lax']
+  if (process.env.VERCEL || process.env.NODE_ENV === 'production') parts.push('Secure')
+  res.setHeader('Set-Cookie', parts.join('; '))
+}
+function sessionToken(req) {
+  const raw = String(req.headers.cookie || '')
+  const match = raw.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`))
+  return match ? decodeURIComponent(match[1]) : null
+}
+async function sessionUser(d, req) {
+  const token = sessionToken(req)
+  if (!token || token.length < 32 || token.length > 256) return null
+  const r = await d.execute({ sql: 'SELECT u.id, u.email, u.name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > CURRENT_TIMESTAMP LIMIT 1', args: [sessionHash(token)] })
+  return r.rows[0] || null
+}
+async function createSession(d, userId, res) {
+  const token = randomId(32)
+  const expires = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString()
+  await d.execute({ sql: 'INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)', args: [randomId(16), userId, sessionHash(token), expires] })
+  cookie(res, token)
+}
+function checkOrigin(req) {
+  if (!['POST','PUT','PATCH','DELETE'].includes(req.method)) return true
+  const origin = req.headers.origin
+  if (!origin) return true
+  return origin === 'https://mangocode.vercel.app' || origin === 'https://mango-code.vercel.app' || origin === 'http://localhost:5173' || origin === 'http://localhost:4173'
+}
+async function hashPassword(password) {
+  const salt = crypto.randomBytes(16)
+  const derived = await new Promise((resolve, reject) => crypto.scrypt(password, salt, 32, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (err, key) => err ? reject(err) : resolve(key)))
+  return `scrypt$${salt.toString('base64url')}$${Buffer.from(derived).toString('base64url')}`
+}
+async function verifyPassword(password, encoded) {
+  const [kind, saltText, keyText] = String(encoded || '').split('$')
+  if (kind !== 'scrypt' || !saltText || !keyText) return false
+  try {
+    const salt = Buffer.from(saltText, 'base64url')
+    const expected = Buffer.from(keyText, 'base64url')
+    const derived = await new Promise((resolve, reject) => crypto.scrypt(password, salt, expected.length, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (err, key) => err ? reject(err) : resolve(key)))
+    return expected.length === derived.length && crypto.timingSafeEqual(expected, derived)
+  } catch { return false }
+}
+async function accountUser(d, req) { return sessionUser(d, req) }
 
 async function ensureUser(d, req) {
+  const account = await accountUser(d, req)
+  if (account?.id) {
+    await d.execute({ sql: 'INSERT OR IGNORE INTO streaks (user_id) VALUES (?)', args: [account.id] })
+    return account.id
+  }
   const id = userIdFrom(req)
   if (!id) return null
-  await d.execute({ sql: 'INSERT OR IGNORE INTO users (id, email, name) VALUES (?, ?, ?)', args: [id, `anonymous-${id}@mangocode.local`, 'MangoCoder'] })
+  await d.execute({ sql: 'INSERT OR IGNORE INTO users (id, email, name, password_hash) VALUES (?, ?, ?, NULL)', args: [id, `anonymous-${id}@mangocode.local`, 'MangoCoder'] })
   await d.execute({ sql: 'INSERT OR IGNORE INTO streaks (user_id) VALUES (?)', args: [id] })
   return id
 }
@@ -107,10 +173,7 @@ async function runtimes() {
   if (!response.ok) throw new Error('Piston runtimes unavailable')
   const list = await response.json()
   const map = {}
-  for (const runtime of list) {
-    map[runtime.language] = runtime.version
-    for (const alias of runtime.aliases || []) map[alias] = runtime.version
-  }
+  for (const runtime of list) { map[runtime.language] = runtime.version; for (const alias of runtime.aliases || []) map[alias] = runtime.version }
   runtimeCache = { at: Date.now(), map }
   return map
 }
@@ -119,27 +182,85 @@ const languages = { javascript: ['javascript', 'main.js'], python: ['python', 'm
 
 export default async function handler(req, res) {
   const origin = req.headers.origin
-  if (origin === 'https://mango-code.vercel.app' || origin === 'http://localhost:5173') res.setHeader('Access-Control-Allow-Origin', origin)
+  if (origin === 'https://mango-code.vercel.app' || origin === 'https://mangocode.vercel.app' || origin === 'http://localhost:5173') res.setHeader('Access-Control-Allow-Origin', origin)
   res.setHeader('Vary', 'Origin')
+  res.setHeader('Access-Control-Allow-Credentials', 'true')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Mango-User')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  res.setHeader('Cache-Control', 'no-store')
   if (req.method === 'OPTIONS') return json(res, 204, {})
 
   try {
     if (req.body === undefined && req.method !== 'GET' && req.method !== 'HEAD') {
       let raw = ''
       for await (const chunk of req) raw += chunk
+      if (raw.length > 32768) return json(res, 413, { error: 'Request too large.' })
       try { req.body = raw ? JSON.parse(raw) : {} } catch { req.body = {} }
     }
     await init()
     const d = database()
-    const userId = await ensureUser(d, req)
     const url = new URL(req.url, 'https://mango-code.vercel.app')
     const path = url.pathname.replace(/\/+$/, '') || '/'
+    if (!checkOrigin(req)) return json(res, 403, { error: 'Origin not allowed.' })
 
+    if (req.method === 'POST' && path === '/api/auth/register') {
+      const { email, password, name, guestId } = req.body || {}
+      const normalEmail = String(email || '').trim().toLowerCase()
+      if (!validEmail(normalEmail) || passwordBytes(password) < PASSWORD_MIN || passwordBytes(password) > PASSWORD_MAX) return json(res, 400, { error: `Use a valid email and a password between ${PASSWORD_MIN} and ${PASSWORD_MAX} UTF-8 bytes.` })
+      const displayName = String(name || '').trim().slice(0, 60) || 'MangoCoder'
+      const existing = await d.execute({ sql: 'SELECT id FROM users WHERE lower(email) = lower(?) AND password_hash IS NOT NULL LIMIT 1', args: [normalEmail] })
+      if (existing.rows.length) return json(res, 409, { error: 'An account with that email already exists.' })
+      const id = randomId(24)
+      const passwordHash = await hashPassword(String(password))
+      await d.execute({ sql: 'INSERT INTO users (id, email, name, password_hash) VALUES (?, ?, ?, ?)', args: [id, normalEmail, displayName, passwordHash] })
+      await d.execute({ sql: 'INSERT OR IGNORE INTO streaks (user_id) VALUES (?)', args: [id] })
+      if (/^[A-Za-z0-9_-]{16,80}$/.test(String(guestId || ''))) {
+        const guest = String(guestId)
+        await d.batch([
+          { sql: 'INSERT OR IGNORE INTO progress (user_id, lesson_id, completed_at) SELECT ?, lesson_id, completed_at FROM progress WHERE user_id = ?', args: [id, guest] },
+          { sql: 'INSERT OR IGNORE INTO exercise_attempts (user_id, exercise_id, passed, submitted_code, created_at) SELECT ?, exercise_id, passed, submitted_code, created_at FROM exercise_attempts WHERE user_id = ?', args: [id, guest] },
+          { sql: 'INSERT OR IGNORE INTO test_attempts (user_id, lesson_id, score, total, passed, created_at) SELECT ?, lesson_id, score, total, passed, created_at FROM test_attempts WHERE user_id = ?', args: [id, guest] },
+        ], 'write')
+      }
+      await createSession(d, id, res)
+      return json(res, 201, { user: { id, email: normalEmail, name: displayName } })
+    }
+
+    if (req.method === 'POST' && path === '/api/auth/login') {
+      const { email, password, guestId } = req.body || {}
+      const normalEmail = String(email || '').trim().toLowerCase()
+      if (!validEmail(normalEmail) || typeof password !== 'string' || passwordBytes(password) > PASSWORD_MAX) return json(res, 400, { error: 'Invalid email or password.' })
+      const found = await d.execute({ sql: 'SELECT id, email, name, password_hash FROM users WHERE lower(email) = lower(?) LIMIT 1', args: [normalEmail] })
+      const row = found.rows[0]
+      if (!row?.password_hash || !(await verifyPassword(password, row.password_hash))) return json(res, 401, { error: 'Invalid email or password.' })
+      if (/^[A-Za-z0-9_-]{16,80}$/.test(String(guestId || '')) && String(guestId) !== row.id) {
+        const guest = String(guestId)
+        await d.batch([
+          { sql: 'INSERT OR IGNORE INTO progress (user_id, lesson_id, completed_at) SELECT ?, lesson_id, completed_at FROM progress WHERE user_id = ?', args: [row.id, guest] },
+          { sql: 'INSERT OR IGNORE INTO exercise_attempts (user_id, exercise_id, passed, submitted_code, created_at) SELECT ?, exercise_id, passed, submitted_code, created_at FROM exercise_attempts WHERE user_id = ?', args: [row.id, guest] },
+          { sql: 'INSERT OR IGNORE INTO test_attempts (user_id, lesson_id, score, total, passed, created_at) SELECT ?, lesson_id, score, total, passed, created_at FROM test_attempts WHERE user_id = ?', args: [row.id, guest] },
+        ], 'write')
+      }
+      await createSession(d, row.id, res)
+      return json(res, 200, { user: { id: row.id, email: row.email, name: row.name } })
+    }
+
+    if (req.method === 'POST' && path === '/api/auth/logout') {
+      const token = sessionToken(req)
+      if (token) await d.execute({ sql: 'DELETE FROM sessions WHERE token_hash = ?', args: [sessionHash(token)] })
+      clearCookie(res)
+      return json(res, 200, { ok: true })
+    }
+    if (req.method === 'GET' && path === '/api/auth/me') return json(res, 200, { user: await accountUser(d, req) })
     if (req.method === 'GET' && path === '/api/health') return json(res, 200, { ok: true, database: true })
+
+    const userId = await ensureUser(d, req)
     if (req.method === 'GET' && path === '/api/courses') {
       const r = await d.execute('SELECT * FROM courses ORDER BY sort_order')
+      res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300')
       return json(res, 200, r.rows)
     }
     const cm = path.match(/^\/api\/courses\/([^/]+)\/lessons$/)
@@ -161,14 +282,16 @@ export default async function handler(req, res) {
       const access = await courseAccess(d, row.course_id, userId)
       const state = access.find((x) => x.id === row.id)
       if (state && !state.unlocked) return json(res, 403, { error: 'This unit is locked until you complete the previous checkpoint.' })
-      const ex = await d.execute({ sql: 'SELECT id, language, prompt, starter_code FROM exercises WHERE lesson_id = ?', args: [lm[1]] })
-      const quiz = await d.execute({ sql: 'SELECT id, question, options FROM quiz_questions WHERE lesson_id = ? ORDER BY id', args: [lm[1]] })
+      const [ex, quiz] = await Promise.all([
+        d.execute({ sql: 'SELECT id, language, prompt, starter_code FROM exercises WHERE lesson_id = ?', args: [lm[1]] }),
+        d.execute({ sql: 'SELECT id, question, options FROM quiz_questions WHERE lesson_id = ? ORDER BY id', args: [lm[1]] }),
+      ])
       return json(res, 200, { ...row, completed: state?.completed || false, passed: state?.passed || false, exercises: ex.rows, quiz: quiz.rows.map((q) => ({ id: q.id, question: q.question, options: JSON.parse(q.options) })) })
     }
     if (req.method === 'POST' && path === '/api/progress/complete') {
       if (!userId) return json(res, 401, { error: 'Progress requires a browser user id.' })
       const { lessonId } = req.body || {}
-      if (!lessonId) return json(res, 400, { error: 'Missing lessonId.' })
+      if (typeof lessonId !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(lessonId)) return json(res, 400, { error: 'Invalid lessonId.' })
       const lesson = await d.execute({ sql: 'SELECT id, course_id, level, unit_type FROM lessons WHERE id = ?', args: [lessonId] })
       if (!lesson.rows.length) return json(res, 404, { error: 'Lesson not found.' })
       const row = lesson.rows[0]
@@ -182,7 +305,7 @@ export default async function handler(req, res) {
     }
     if (req.method === 'POST' && path === '/api/quiz/check') {
       const { questionId, selectedIndex } = req.body || {}
-      if (!questionId || !Number.isInteger(selectedIndex) || selectedIndex < 0) return json(res, 400, { error: 'Invalid answer' })
+      if (typeof questionId !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(questionId) || !Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex > 20) return json(res, 400, { error: 'Invalid answer' })
       const r = await d.execute({ sql: 'SELECT correct_index FROM quiz_questions WHERE id = ?', args: [questionId] })
       if (!r.rows.length) return json(res, 404, { error: 'Question not found' })
       const correct = selectedIndex === Number(r.rows[0].correct_index)
@@ -191,7 +314,7 @@ export default async function handler(req, res) {
     if (req.method === 'POST' && path === '/api/tests/submit') {
       if (!userId) return json(res, 401, { error: 'Progress requires a browser user id.' })
       const { lessonId, answers } = req.body || {}
-      if (!lessonId || !Array.isArray(answers)) return json(res, 400, { error: 'Invalid test submission.' })
+      if (typeof lessonId !== 'string' || !Array.isArray(answers) || answers.length > 30) return json(res, 400, { error: 'Invalid test submission.' })
       const lesson = await d.execute({ sql: 'SELECT * FROM lessons WHERE id = ?', args: [lessonId] })
       if (!lesson.rows.length || !['test', 'final'].includes(lesson.rows[0].unit_type)) return json(res, 400, { error: 'Not a test.' })
       const row = lesson.rows[0]
@@ -203,7 +326,7 @@ export default async function handler(req, res) {
       let score = 0
       for (const q of qs.rows) if (map.get(q.id) === Number(q.correct_index)) score++
       const total = qs.rows.length
-      const required = 8
+      const required = Math.min(8, total)
       const passed = score >= required
       await d.execute({ sql: 'INSERT INTO test_attempts (user_id, lesson_id, score, total, passed) VALUES (?, ?, ?, ?, ?)', args: [userId, lessonId, score, total, passed ? 1 : 0] })
       if (passed) await d.execute({ sql: 'INSERT OR REPLACE INTO progress (user_id, lesson_id, completed_at) VALUES (?, ?, CURRENT_TIMESTAMP)', args: [userId, lessonId] })
@@ -213,7 +336,7 @@ export default async function handler(req, res) {
     if (req.method === 'POST' && path === '/api/exercises/check') {
       if (!userId) return json(res, 401, { pass: false, message: 'Progress requires a browser user id.' })
       const { exerciseId, code } = req.body || {}
-      if (!exerciseId || typeof code !== 'string') return json(res, 400, { pass: false, message: 'Missing exerciseId or code.' })
+      if (typeof exerciseId !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(exerciseId) || typeof code !== 'string') return json(res, 400, { pass: false, message: 'Invalid exercise or code.' })
       if (code.length > 20000) return json(res, 413, { pass: false, message: 'Code is too long.' })
       const r = await d.execute({ sql: 'SELECT * FROM exercises WHERE id = ?', args: [exerciseId] })
       const exercise = r.rows[0]
@@ -222,21 +345,20 @@ export default async function handler(req, res) {
       if (!config) return json(res, 400, { pass: false, message: 'Unsupported language.' })
       const version = (await runtimes())[config[0]]
       if (!version) return json(res, 503, { pass: false, message: 'This runtime is unavailable.' })
-      const response = await fetch(`${PISTON_URL}/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: config[0], version, files: [{ name: config[1], content: code }], stdin: exercise.test_input || '' }) })
-      if (!response.ok) return json(res, 502, { pass: false, message: 'Code runner unavailable.' })
-      const data = await response.json()
-      const run = data.run || {}
-      const actual = String(run.stdout || '').trim()
-      const expected = String(exercise.expected_output || '').trim()
-      const pass = run.code === 0 && actual === expected
+      const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 10000)
+      let response
+      try { response = await fetch(`${PISTON_URL}/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, signal: controller.signal, body: JSON.stringify({ language: config[0], version, files: [{ name: config[1], content: code }], stdin: String(exercise.test_input || '').slice(0, 4000), run_timeout: 3000, run_cpu_time: 3000, run_memory_limit: 64 * 1024 * 1024, compile_timeout: 5000, compile_cpu_time: 5000, compile_memory_limit: 128 * 1024 * 1024 }) }) } finally { clearTimeout(timer) }
+      if (!response.ok) return json(res, response.status === 429 ? 429 : 502, { pass: false, message: 'Code runner unavailable. Please try again.' })
+      const data = await response.json(); const run = data.run || {}
+      const actual = String(run.stdout || '').trim(); const expected = String(exercise.expected_output || '').trim(); const pass = run.code === 0 && actual === expected
       await d.execute({ sql: 'INSERT INTO exercise_attempts (user_id, exercise_id, passed, submitted_code) VALUES (?, ?, ?, ?)', args: [userId, exerciseId, pass ? 1 : 0, code] })
       if (pass) await touchStreak(d, userId)
-      if (run.code !== 0) return json(res, 200, { pass: false, message: 'Your code produced an error. Fix it and try again.', stderr: run.stderr || '' })
-      return json(res, 200, { pass, message: pass ? 'Correct! Your output matched.' : 'Not quite. Check your output and try again.', stdout: run.stdout || '' })
+      if (run.code !== 0) return json(res, 200, { pass: false, message: 'Your code produced an error. Fix it and try again.', stderr: String(run.stderr || '').slice(0, 2000) })
+      return json(res, 200, { pass, message: pass ? 'Correct! Your output matched.' : 'Not quite. Check your output and try again.', stdout: String(run.stdout || '').slice(0, 4000) })
     }
     return json(res, 404, { error: 'Not found' })
   } catch (error) {
-    console.error('MangoCode API error', error)
+    console.error('MangoCode API error', error?.message || error)
     return json(res, 500, { error: 'Internal server error' })
   }
 }
