@@ -8,7 +8,10 @@ const SESSION_COOKIE = 'mangocode_session'
 const SESSION_DAYS = 30
 const PASSWORD_SALT_BYTES = 16
 const PASSWORD_KEY_BYTES = 64
+const PASSWORD_SCRYPT_OPTIONS = { N: 16384, r: 8, p: 1, maxmem: 128 * 1024 * 1024 }
 const SESSION_BYTES = 32
+const AUTH_WINDOW_MS = 60_000
+const AUTH_LIMIT = 12
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase()
@@ -23,7 +26,11 @@ function parseCookies(header = '') {
   return Object.fromEntries(header.split(';').map(part => {
     const i = part.indexOf('=')
     if (i < 0) return ['', '']
-    return [decodeURIComponent(part.slice(0, i).trim()), decodeURIComponent(part.slice(i + 1).trim())]
+    try {
+      return [decodeURIComponent(part.slice(0, i).trim()), decodeURIComponent(part.slice(i + 1).trim())]
+    } catch {
+      return ['', '']
+    }
   }).filter(([k]) => k))
 }
 
@@ -32,28 +39,46 @@ function hashSession(token) {
 }
 
 function hashPassword(password, salt) {
-  return crypto.scryptSync(password, salt, PASSWORD_KEY_BYTES, { N: 16384, r: 8, p: 1 })
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, PASSWORD_KEY_BYTES, PASSWORD_SCRYPT_OPTIONS, (err, key) => {
+      if (err) reject(err)
+      else resolve(key)
+    })
+  })
 }
 
-function encodePassword(password) {
+async function encodePassword(password) {
   const salt = crypto.randomBytes(PASSWORD_SALT_BYTES)
-  const key = hashPassword(password, salt)
-  return `scrypt$${salt.toString('base64url')}$${key.toString('base64url')}`
+  const key = await hashPassword(password, salt)
+  return `scrypt$${salt.toString('base64url')}$${Buffer.from(key).toString('base64url')}`
 }
 
-function verifyPassword(password, encoded) {
+async function verifyPassword(password, encoded) {
   const [, saltPart, keyPart] = String(encoded || '').split('$')
   if (!saltPart || !keyPart) return false
   try {
     const salt = Buffer.from(saltPart, 'base64url')
     const expected = Buffer.from(keyPart, 'base64url')
-    const actual = hashPassword(password, salt)
-    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual)
-  } catch { return false }
+    if (expected.length !== PASSWORD_KEY_BYTES) return false
+    const actual = Buffer.from(await hashPassword(password, salt))
+    return crypto.timingSafeEqual(expected, actual)
+  } catch {
+    return false
+  }
 }
 
 function setSessionCookie(res, token) {
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(token)}; Max-Age=${SESSION_DAYS * 86400}; Path=/; HttpOnly; Secure; SameSite=Lax`)
+  const secure = process.env.NODE_ENV === 'production' || process.env.VERCEL
+  const flags = [`${SESSION_COOKIE}=${encodeURIComponent(token)}`, `Max-Age=${SESSION_DAYS * 86400}`, 'Path=/', 'HttpOnly', 'SameSite=Lax']
+  if (secure) flags.push('Secure')
+  res.setHeader('Set-Cookie', flags.join('; '))
+}
+
+function clearSessionCookie(res) {
+  const secure = process.env.NODE_ENV === 'production' || process.env.VERCEL
+  const flags = [`${SESSION_COOKIE}=`, 'Max-Age=0', 'Path=/', 'HttpOnly', 'SameSite=Lax']
+  if (secure) flags.push('Secure')
+  res.setHeader('Set-Cookie', flags.join('; '))
 }
 
 async function createSession(userId) {
@@ -65,7 +90,7 @@ async function createSession(userId) {
 
 async function getSessionUser(req) {
   const token = parseCookies(req.headers.cookie).mangocode_session
-  if (!token) return null
+  if (!token || token.length < 32 || token.length > 256) return null
   const result = await db.execute({
     sql: `SELECT u.id, u.email, u.name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > CURRENT_TIMESTAMP`,
     args: [hashSession(token)],
@@ -76,7 +101,10 @@ async function getSessionUser(req) {
 function rateLimit(key, limit, windowMs) {
   const now = Date.now()
   const row = authWindows.get(key)
-  if (!row || now - row.startedAt >= windowMs) { authWindows.set(key, { startedAt: now, count: 1 }); return true }
+  if (!row || now - row.startedAt >= windowMs) {
+    authWindows.set(key, { startedAt: now, count: 1 })
+    return true
+  }
   if (row.count >= limit) return false
   row.count += 1
   return true
@@ -84,12 +112,35 @@ function rateLimit(key, limit, windowMs) {
 
 const authWindows = new Map()
 function guard(req, res, next) {
-  const key = req.ip || req.socket.remoteAddress || 'unknown'
-  if (!rateLimit(`auth:${key}`, 12, 60_000)) return res.status(429).json({ error: 'Too many authentication attempts. Please wait a minute and try again.' })
+  const ip = req.ip || req.socket.remoteAddress || 'unknown'
+  const email = normalizeEmail(req.body?.email)
+  const key = `auth:${ip}:${email || 'no-email'}`
+  if (!rateLimit(key, AUTH_LIMIT, AUTH_WINDOW_MS)) return res.status(429).json({ error: 'Too many authentication attempts. Please wait a minute and try again.' })
+  if (authWindows.size > 10_000) {
+    const now = Date.now()
+    for (const [storedKey, stored] of authWindows) {
+      if (now - stored.startedAt >= AUTH_WINDOW_MS) authWindows.delete(storedKey)
+      if (authWindows.size <= 8_000) break
+    }
+  }
   next()
 }
 
+function originAllowed(req) {
+  const origin = req.headers.origin
+  if (!origin) return true
+  const allowed = new Set([
+    process.env.CLIENT_URL,
+    'https://mangocode.vercel.app',
+    'http://localhost:5173',
+    'http://localhost:4173',
+  ].filter(Boolean))
+  return allowed.has(origin)
+}
+
 authRouter.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store')
+  if (req.method === 'POST' && !originAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' })
   if (req.method === 'POST') return guard(req, res, next)
   next()
 })
@@ -105,7 +156,7 @@ authRouter.post('/register', async (req, res, next) => {
     const existing = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [email] })
     if (existing.rows.length) return res.status(409).json({ error: 'Could not create that account. Try signing in instead.' })
     const id = crypto.randomUUID()
-    await db.execute({ sql: 'INSERT INTO users (id, email, name, password_hash, auth_provider) VALUES (?, ?, ?, ?, ?)', args: [id, email, name, encodePassword(password), 'password'] })
+    await db.execute({ sql: 'INSERT INTO users (id, email, name, password_hash, auth_provider) VALUES (?, ?, ?, ?, ?)', args: [id, email, name, await encodePassword(password), 'password'] })
     const token = await createSession(id)
     setSessionCookie(res, token)
     res.status(201).json({ user: { id, email, name } })
@@ -118,7 +169,7 @@ authRouter.post('/login', async (req, res, next) => {
     const password = String(req.body?.password || '')
     const result = await db.execute({ sql: 'SELECT id, email, name, password_hash FROM users WHERE email = ?', args: [email] })
     const user = result.rows[0]
-    if (!user?.password_hash || !verifyPassword(password, user.password_hash)) return res.status(401).json({ error: 'Email or password is incorrect.' })
+    if (!user?.password_hash || !(await verifyPassword(password, user.password_hash))) return res.status(401).json({ error: 'Email or password is incorrect.' })
     const token = await createSession(user.id)
     setSessionCookie(res, token)
     res.json({ user: publicUser(user) })
@@ -136,7 +187,7 @@ authRouter.post('/google', async (req, res, next) => {
     const response = await fetch(verifyUrl, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(5000) })
     if (!response.ok) return res.status(401).json({ error: 'Google sign-in could not be verified.' })
     const claims = await response.json()
-    if (claims.aud !== clientId || claims.iss !== 'https://accounts.google.com' || claims.email_verified !== 'true' || !claims.sub || !claims.email) return res.status(401).json({ error: 'Google sign-in could not be verified.' })
+    if (claims.aud !== clientId || (claims.azp && claims.azp !== clientId) || claims.iss !== 'https://accounts.google.com' || claims.email_verified !== 'true' || !claims.sub || !claims.email) return res.status(401).json({ error: 'Google sign-in could not be verified.' })
 
     const email = normalizeEmail(claims.email)
     const name = String(claims.name || email.split('@')[0]).trim().slice(0, 60) || 'MangoCode learner'
@@ -160,7 +211,7 @@ authRouter.post('/logout', async (req, res, next) => {
   try {
     const token = parseCookies(req.headers.cookie).mangocode_session
     if (token) await db.execute({ sql: 'DELETE FROM sessions WHERE token_hash = ?', args: [hashSession(token)] })
-    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`)
+    clearSessionCookie(res)
     res.json({ ok: true })
   } catch (err) { next(err) }
 })
