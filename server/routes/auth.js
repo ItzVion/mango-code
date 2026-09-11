@@ -11,7 +11,8 @@ const PASSWORD_KEY_BYTES = 64
 const PASSWORD_SCRYPT_OPTIONS = { N: 16384, r: 8, p: 1, maxmem: 128 * 1024 * 1024 }
 const SESSION_BYTES = 32
 const AUTH_WINDOW_MS = 60_000
-const AUTH_LIMIT = 12
+const AUTH_IP_LIMIT = 30
+const AUTH_IDENTITY_LIMIT = 8
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase()
@@ -114,8 +115,11 @@ const authWindows = new Map()
 function guard(req, res, next) {
   const ip = req.ip || req.socket.remoteAddress || 'unknown'
   const email = normalizeEmail(req.body?.email)
-  const key = `auth:${ip}:${email || 'no-email'}`
-  if (!rateLimit(key, AUTH_LIMIT, AUTH_WINDOW_MS)) return res.status(429).json({ error: 'Too many authentication attempts. Please wait a minute and try again.' })
+  const ipKey = `auth-ip:${ip}`
+  const identityKey = `auth-identity:${email || ip}`
+  if (!rateLimit(ipKey, AUTH_IP_LIMIT, AUTH_WINDOW_MS) || !rateLimit(identityKey, AUTH_IDENTITY_LIMIT, AUTH_WINDOW_MS)) {
+    return res.status(429).json({ error: 'Too many authentication attempts. Please wait a minute and try again.' })
+  }
   if (authWindows.size > 10_000) {
     const now = Date.now()
     for (const [storedKey, stored] of authWindows) {
