@@ -8,8 +8,10 @@ const PISTON_API_KEY = process.env.PISTON_API_KEY || ''
 const MAX_CODE_LENGTH = 20_000
 const MAX_OUTPUT_LENGTH = 4_000
 const REQUEST_TIMEOUT_MS = 10_000
+const MAX_CONCURRENT_RUNS = 4
 
 let runtimeCache = { at: 0, map: {} }
+let activeRuns = 0
 
 async function pistonFetch(url, init = {}) {
   const controller = new AbortController()
@@ -64,6 +66,9 @@ exercisesRouter.post('/check', async (req, res) => {
   if (code.length > MAX_CODE_LENGTH) {
     return res.status(413).json({ pass: false, message: `Your code is too long. Keep it under ${MAX_CODE_LENGTH.toLocaleString()} characters.` })
   }
+  if (activeRuns >= MAX_CONCURRENT_RUNS) {
+    return res.status(429).json({ pass: false, message: 'The code runner is busy. Please wait a moment and try again.' })
+  }
 
   const result = await db.execute({
     sql: 'SELECT id, language, test_input, expected_output FROM exercises WHERE id = ?',
@@ -75,6 +80,7 @@ exercisesRouter.post('/check', async (req, res) => {
   const language = PISTON_LANGUAGE[exercise.language]
   if (!language) return res.status(400).json({ pass: false, message: `Unsupported language: ${exercise.language}` })
 
+  activeRuns += 1
   try {
     const version = await getRuntimeVersion(language)
     if (!version) return res.status(503).json({ pass: false, message: 'This language is temporarily unavailable. Please try again later.' })
@@ -121,6 +127,7 @@ exercisesRouter.post('/check', async (req, res) => {
     const expected = String(exercise.expected_output || '').slice(0, MAX_OUTPUT_LENGTH).trim()
     const pass = actual === expected
 
+    res.setHeader('Cache-Control', 'no-store')
     return res.json({
       pass,
       message: pass
@@ -135,6 +142,8 @@ exercisesRouter.post('/check', async (req, res) => {
         ? 'The code runner took too long to respond. Please try again.'
         : 'The code runner is temporarily unavailable. Please try again later.',
     })
+  } finally {
+    activeRuns = Math.max(0, activeRuns - 1)
   }
 })
 
