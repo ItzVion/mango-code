@@ -20,9 +20,7 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()')
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
-  if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
-    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains')
-  }
+  if (process.env.NODE_ENV === 'production' || process.env.VERCEL) res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains')
   next()
 })
 
@@ -37,33 +35,38 @@ app.use(cors({
 
 app.use(express.json({ limit: '32kb', strict: true }))
 
-// Lightweight per-instance limiter. This is intentionally an additional layer;
-// the code runner itself also enforces strict input and upstream execution limits.
 const requestWindows = new Map()
 function rateLimit(key, limit, windowMs) {
   const now = Date.now()
   const row = requestWindows.get(key)
   if (!row || now - row.startedAt >= windowMs) {
     requestWindows.set(key, { startedAt: now, count: 1 })
-    return true
+  } else {
+    if (row.count >= limit) return false
+    row.count += 1
   }
-  if (row.count >= limit) return false
-  row.count += 1
+
+  // Prevent an attacker from filling the process with unique limiter keys.
+  if (requestWindows.size > 10_000) {
+    for (const [storedKey, stored] of requestWindows) {
+      if (now - stored.startedAt >= windowMs) requestWindows.delete(storedKey)
+      if (requestWindows.size <= 8_000) break
+    }
+  }
   return true
 }
 
 app.use('/api/exercises', (req, res, next) => {
   const forwarded = req.headers['x-forwarded-for']
-  const ip = Array.isArray(forwarded) ? forwarded[0] : String(forwarded || req.socket.remoteAddress || 'unknown').split(',')[0].trim()
-  const user = typeof req.headers['x-mango-user'] === 'string' ? req.headers['x-mango-user'].slice(0, 80) : ''
-  const key = `exercise:${ip}:${user}`
-  if (!rateLimit(key, 20, 60_000)) return res.status(429).json({ error: 'Too many code runs. Please wait a minute and try again.' })
+  const ip = Array.isArray(forwarded)
+    ? forwarded[0]
+    : String(forwarded || req.socket.remoteAddress || 'unknown').split(',')[0].trim()
+  if (!rateLimit(`exercise:${ip}`, 20, 60_000)) return res.status(429).json({ error: 'Too many code runs. Please wait a minute and try again.' })
   next()
 })
 
 app.use('/api', lessonsRouter)
 app.use('/api/exercises', exercisesRouter)
-
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
 app.use((err, _req, res, _next) => {
@@ -73,8 +76,6 @@ app.use((err, _req, res, _next) => {
 })
 
 const PORT = process.env.PORT || 4000
-if (!process.env.VERCEL) {
-  app.listen(PORT, () => console.log(`MangoCode server running on :${PORT}`))
-}
+if (!process.env.VERCEL) app.listen(PORT, () => console.log(`MangoCode server running on :${PORT}`))
 
 export default app
