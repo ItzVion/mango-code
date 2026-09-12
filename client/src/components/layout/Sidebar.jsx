@@ -3,7 +3,7 @@ import { motion } from 'motion/react'
 import { LayoutDashboard, Code2, Braces, Hash, FileCode2, Flame, UserRound } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
-const NAV = [
+export const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/course/html-css', label: 'HTML & CSS', icon: FileCode2 },
   { to: '/course/javascript', label: 'JavaScript', icon: Braces },
