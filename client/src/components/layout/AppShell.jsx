@@ -1,12 +1,13 @@
 import { NavLink } from 'react-router-dom'
+import { Sidebar, NAV } from './Sidebar'
+import { Topbar } from './Topbar'
 import { AnimationLayer } from '../motion/AnimationLayer'
-import { NAV } from './Sidebar'
 
 export function AppShell({ children }) {
   return (
     <div className="min-h-screen bg-paper">
       <AnimationLayer />
-      <aside className="hidden md:block"><Sidebar /></aside>
+      <Sidebar />
       <div className="min-h-screen md:pl-64">
         <Topbar />
         <main className="px-4 pb-20 sm:px-5 md:px-8 md:pb-12">{children}</main>
