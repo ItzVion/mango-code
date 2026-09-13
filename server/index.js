@@ -5,6 +5,7 @@ import { lessonsRouter } from './routes/lessons.js'
 import { exercisesRouter } from './routes/exercises.js'
 import { authRouter } from './routes/auth.js'
 import { db } from './db.js'
+import { checkRateLimit, clientIp } from './rateLimit.js'
 
 const app = express()
 app.disable('x-powered-by')
@@ -51,49 +52,13 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '32kb', strict: true }))
 
-const requestWindows = new Map()
-function rateLimit(key, limit, windowMs) {
-  const now = Date.now()
-  const row = requestWindows.get(key)
-  if (!row || now - row.startedAt >= windowMs) {
-    requestWindows.set(key, { startedAt: now, count: 1 })
-  } else {
-    if (row.count >= limit) return false
-    row.count += 1
-  }
-  if (requestWindows.size > 10_000) {
-    for (const [storedKey, stored] of requestWindows) {
-      if (now - stored.startedAt >= windowMs) requestWindows.delete(storedKey)
-      if (requestWindows.size <= 8_000) break
-    }
-  }
-  return true
-}
-
-function requestIp(req) {
-  return req.ip || req.socket.remoteAddress || 'unknown'
-}
-
-app.use('/api/exercises', (req, res, next) => {
-  if (!rateLimit(`exercise:${requestIp(req)}`, 20, 60_000)) {
-    return res.status(429).json({ error: 'Too many code runs. Please wait a minute and try again.' })
-  }
-  next()
-})
-
-app.use('/api/quiz/check', (req, res, next) => {
-  if (!rateLimit(`quiz:${requestIp(req)}`, 60, 60_000)) {
-    return res.status(429).json({ error: 'Too many quiz checks. Please slow down.' })
-  }
-  next()
-})
-
 let schemaPromise
 async function ensureAuthSchema() {
   if (!schemaPromise) {
     schemaPromise = (async () => {
       await db.execute(`CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires_at TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`)
-      await db.execute(`CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 0, window_start TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)
+      await db.execute(`CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 1, window_start TEXT NOT NULL DEFAULT (datetime('now')))`)
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start)')
       const migrations = [
         'ALTER TABLE users ADD COLUMN password_hash TEXT',
         'ALTER TABLE users ADD COLUMN google_sub TEXT',
@@ -106,14 +71,29 @@ async function ensureAuthSchema() {
       }
       await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL')
       await db.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)')
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start)')
     })()
   }
   return schemaPromise
 }
 
-app.use('/api/auth', async (_req, _res, next) => {
+app.use(async (_req, _res, next) => {
   try { await ensureAuthSchema(); next() } catch (err) { next(err) }
+})
+
+app.use('/api/exercises', async (req, res, next) => {
+  try {
+    const ok = await checkRateLimit(`exercise:${clientIp(req)}`, 20, 60_000)
+    if (!ok) return res.status(429).json({ error: 'Too many code runs. Please wait a minute and try again.' })
+    next()
+  } catch (err) { next(err) }
+})
+
+app.use('/api/quiz/check', async (req, res, next) => {
+  try {
+    const ok = await checkRateLimit(`quiz:${clientIp(req)}`, 60, 60_000)
+    if (!ok) return res.status(429).json({ error: 'Too many quiz checks. Please slow down.' })
+    next()
+  } catch (err) { next(err) }
 })
 
 app.use('/api/auth', authRouter)

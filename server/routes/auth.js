@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import crypto from 'node:crypto'
 import { db } from '../db.js'
+import { checkRateLimit, clientIp } from '../rateLimit.js'
 
 export const authRouter = Router()
 
@@ -99,51 +100,25 @@ async function getSessionUser(req) {
   return publicUser(result.rows[0])
 }
 
-// Turso-backed fixed-window limiter. Vercel instances do not share module
-// memory, so the counter must live in the database to work across instances.
-async function rateLimit(key, limit, windowMs) {
-  const now = new Date()
-  const cutoff = new Date(now.getTime() - windowMs).toISOString()
-
-  const increment = await db.execute({
-    sql: `UPDATE rate_limits SET count = count + 1
-          WHERE key = ? AND datetime(window_start) > datetime(?) AND count < ?`,
-    args: [key, cutoff, limit],
-  })
-  if (increment.rowsAffected > 0) return true
-
-  const current = await db.execute({
-    sql: 'SELECT count, window_start FROM rate_limits WHERE key = ?',
-    args: [key],
-  })
-  const row = current.rows[0]
-  if (row) {
-    const windowStart = new Date(String(row.window_start)).getTime()
-    if (Number.isFinite(windowStart) && windowStart > now.getTime() - windowMs) return false
-  }
-
-  await db.execute({
-    sql: `INSERT INTO rate_limits (key, count, window_start) VALUES (?, 1, ?)
-          ON CONFLICT(key) DO UPDATE SET count = 1, window_start = excluded.window_start`,
-    args: [key, now.toISOString()],
-  })
-  return true
-}
-
+// DB-backed rate limiting (see ../rateLimit.js) — Vercel serverless functions
+// share no in-process memory between invocations/instances, so an in-memory
+// Map resets on every cold start and doesn't actually enforce the limit it
+// appears to.
 async function guard(req, res, next) {
   try {
-    const ip = req.ip || req.socket.remoteAddress || 'unknown'
+    const ip = clientIp(req)
     const email = normalizeEmail(req.body?.email)
     const ipKey = `auth-ip:${ip}`
     const identityKey = `auth-identity:${email || ip}`
-    if (!(await rateLimit(ipKey, AUTH_IP_LIMIT, AUTH_WINDOW_MS)) || !(await rateLimit(identityKey, AUTH_IDENTITY_LIMIT, AUTH_WINDOW_MS))) {
+    const [ipOk, identityOk] = await Promise.all([
+      checkRateLimit(ipKey, AUTH_IP_LIMIT, AUTH_WINDOW_MS),
+      checkRateLimit(identityKey, AUTH_IDENTITY_LIMIT, AUTH_WINDOW_MS),
+    ])
+    if (!ipOk || !identityOk) {
       return res.status(429).json({ error: 'Too many authentication attempts. Please wait a minute and try again.' })
     }
     next()
-  } catch (err) {
-    console.error('Auth rate-limit check failed:', err)
-    return res.status(503).json({ error: 'Authentication service temporarily unavailable. Please try again.' })
-  }
+  } catch (err) { next(err) }
 }
 
 function originAllowed(req) {
