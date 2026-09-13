@@ -99,35 +99,50 @@ async function getSessionUser(req) {
   return publicUser(result.rows[0])
 }
 
-function rateLimit(key, limit, windowMs) {
-  const now = Date.now()
-  const row = authWindows.get(key)
-  if (!row || now - row.startedAt >= windowMs) {
-    authWindows.set(key, { startedAt: now, count: 1 })
-    return true
+// Turso-backed fixed-window limiter. Vercel instances do not share module
+// memory, so the counter must live in the database to work across instances.
+async function rateLimit(key, limit, windowMs) {
+  const now = new Date()
+  const cutoff = new Date(now.getTime() - windowMs).toISOString()
+
+  const increment = await db.execute({
+    sql: `UPDATE rate_limits SET count = count + 1 WHERE key = ? AND window_start > ? AND count < ?`,
+    args: [key, cutoff, limit],
+  })
+  if (increment.rowsAffected > 0) return true
+
+  const current = await db.execute({
+    sql: 'SELECT count, window_start FROM rate_limits WHERE key = ?',
+    args: [key],
+  })
+  const row = current.rows[0]
+  if (row) {
+    const windowStart = new Date(String(row.window_start)).getTime()
+    if (Number.isFinite(windowStart) && windowStart > now.getTime() - windowMs) return false
   }
-  if (row.count >= limit) return false
-  row.count += 1
+
+  await db.execute({
+    sql: `INSERT INTO rate_limits (key, count, window_start) VALUES (?, 1, ?)
+          ON CONFLICT(key) DO UPDATE SET count = 1, window_start = excluded.window_start`,
+    args: [key, now.toISOString()],
+  })
   return true
 }
 
-const authWindows = new Map()
-function guard(req, res, next) {
-  const ip = req.ip || req.socket.remoteAddress || 'unknown'
-  const email = normalizeEmail(req.body?.email)
-  const ipKey = `auth-ip:${ip}`
-  const identityKey = `auth-identity:${email || ip}`
-  if (!rateLimit(ipKey, AUTH_IP_LIMIT, AUTH_WINDOW_MS) || !rateLimit(identityKey, AUTH_IDENTITY_LIMIT, AUTH_WINDOW_MS)) {
-    return res.status(429).json({ error: 'Too many authentication attempts. Please wait a minute and try again.' })
-  }
-  if (authWindows.size > 10_000) {
-    const now = Date.now()
-    for (const [storedKey, stored] of authWindows) {
-      if (now - stored.startedAt >= AUTH_WINDOW_MS) authWindows.delete(storedKey)
-      if (authWindows.size <= 8_000) break
+async function guard(req, res, next) {
+  try {
+    const ip = req.ip || req.socket.remoteAddress || 'unknown'
+    const email = normalizeEmail(req.body?.email)
+    const ipKey = `auth-ip:${ip}`
+    const identityKey = `auth-identity:${email || ip}`
+    if (!(await rateLimit(ipKey, AUTH_IP_LIMIT, AUTH_WINDOW_MS)) || !(await rateLimit(identityKey, AUTH_IDENTITY_LIMIT, AUTH_WINDOW_MS))) {
+      return res.status(429).json({ error: 'Too many authentication attempts. Please wait a minute and try again.' })
     }
+    next()
+  } catch (err) {
+    console.error('Auth rate-limit check failed:', err)
+    return res.status(503).json({ error: 'Authentication service temporarily unavailable. Please try again.' })
   }
-  next()
 }
 
 function originAllowed(req) {
