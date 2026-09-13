@@ -106,7 +106,8 @@ async function rateLimit(key, limit, windowMs) {
   const cutoff = new Date(now.getTime() - windowMs).toISOString()
 
   const increment = await db.execute({
-    sql: `UPDATE rate_limits SET count = count + 1 WHERE key = ? AND window_start > ? AND count < ?`,
+    sql: `UPDATE rate_limits SET count = count + 1
+          WHERE key = ? AND datetime(window_start) > datetime(?) AND count < ?`,
     args: [key, cutoff, limit],
   })
   if (increment.rowsAffected > 0) return true
@@ -201,13 +202,11 @@ authRouter.post('/google', async (req, res, next) => {
     const clientId = process.env.GOOGLE_CLIENT_ID
     if (!clientId) return res.status(503).json({ error: 'Google sign-in is not configured yet.' })
     if (!credential || credential.length > 10000) return res.status(400).json({ error: 'Invalid Google credential.' })
-
     const verifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`
     const response = await fetch(verifyUrl, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(5000) })
     if (!response.ok) return res.status(401).json({ error: 'Google sign-in could not be verified.' })
     const claims = await response.json()
     if (claims.aud !== clientId || (claims.azp && claims.azp !== clientId) || claims.iss !== 'https://accounts.google.com' || claims.email_verified !== 'true' || !claims.sub || !claims.email) return res.status(401).json({ error: 'Google sign-in could not be verified.' })
-
     const email = normalizeEmail(claims.email)
     const name = String(claims.name || email.split('@')[0]).trim().slice(0, 60) || 'MangoCode learner'
     let result = await db.execute({ sql: 'SELECT id, email, name FROM users WHERE google_sub = ? OR email = ?', args: [claims.sub, email] })
