@@ -52,6 +52,12 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0,
+  window_start TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS progress (
   user_id TEXT NOT NULL REFERENCES users(id),
   lesson_id TEXT NOT NULL REFERENCES lessons(id),
@@ -91,3 +97,4 @@ CREATE INDEX IF NOT EXISTS idx_exercises_lesson ON exercises(lesson_id);
 CREATE INDEX IF NOT EXISTS idx_progress_user ON progress(user_id);
 CREATE INDEX IF NOT EXISTS idx_test_attempts_user ON test_attempts(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start);
