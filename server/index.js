@@ -93,6 +93,7 @@ async function ensureAuthSchema() {
   if (!schemaPromise) {
     schemaPromise = (async () => {
       await db.execute(`CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires_at TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`)
+      await db.execute(`CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 0, window_start TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)
       const migrations = [
         'ALTER TABLE users ADD COLUMN password_hash TEXT',
         'ALTER TABLE users ADD COLUMN google_sub TEXT',
@@ -105,6 +106,7 @@ async function ensureAuthSchema() {
       }
       await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL')
       await db.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)')
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start)')
     })()
   }
   return schemaPromise
