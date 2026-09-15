@@ -14,8 +14,7 @@ app.set('trust proxy', 1)
 const allowedOrigins = [
   process.env.CLIENT_URL,
   'https://mangocode.vercel.app',
-  'http://localhost:5173',
-  'http://localhost:4173',
+  ...((process.env.NODE_ENV !== 'production' && !process.env.VERCEL) ? ['http://localhost:5173', 'http://localhost:4173'] : []),
 ].filter(Boolean)
 
 app.use((req, res, next) => {
@@ -25,7 +24,12 @@ app.use((req, res, next) => {
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()')
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none')
   res.setHeader('X-DNS-Prefetch-Control', 'off')
+  if (req.path.startsWith('/api/')) {
+    res.setHeader('Cache-Control', 'no-store, max-age=0')
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive')
+  }
   if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
     res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
   }
@@ -38,16 +42,20 @@ app.use(cors({
     return callback(null, false)
   },
   credentials: true,
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'X-Mango-User'],
+  methods: ['GET', 'HEAD', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
+  maxAge: 86400,
 }))
 
 app.use((req, res, next) => {
-  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
-    const origin = req.headers.origin
-    if (origin && !allowedOrigins.includes(origin)) return res.status(403).json({ error: 'Origin not allowed.' })
-  }
-  next()
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next()
+  const origin = req.headers.origin || req.headers.referer
+  if (!origin) return res.status(403).json({ error: 'Cross-site request blocked.' })
+  let originValue
+  try { originValue = new URL(origin).origin } catch { return res.status(403).json({ error: 'Cross-site request blocked.' }) }
+  const requestOrigin = `${req.protocol}://${req.get('host')}`
+  if (originValue === requestOrigin || allowedOrigins.includes(originValue)) return next()
+  return res.status(403).json({ error: 'Cross-site request blocked.' })
 })
 
 app.use(express.json({ limit: '32kb', strict: true }))
@@ -56,22 +64,20 @@ let schemaPromise
 async function ensureAuthSchema() {
   if (!schemaPromise) {
     schemaPromise = (async () => {
-      await db.execute(`CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires_at TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`)
-      await db.execute(`CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 1, window_start TEXT NOT NULL DEFAULT (datetime('now')))`)
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start)')
-      const migrations = [
-        'ALTER TABLE users ADD COLUMN password_hash TEXT',
-        'ALTER TABLE users ADD COLUMN google_sub TEXT',
-        "ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'password'",
-      ]
-      for (const sql of migrations) {
-        try { await db.execute(sql) } catch (err) {
-          if (!/duplicate column|already exists/i.test(String(err?.message || err))) throw err
-        }
-      }
-      await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL')
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)')
-    })()
+      const required = ['users', 'sessions', 'rate_limits', 'lessons', 'courses', 'exercises', 'quiz_questions', 'progress', 'streaks', 'exercise_attempts', 'test_attempts']
+      const result = await db.execute({
+        sql: `SELECT table_name
+              FROM information_schema.tables
+              WHERE table_schema = 'public' AND table_name = ANY(?)`,
+        args: [required],
+      })
+      const present = new Set(result.rows.map(row => row.table_name))
+      const missing = required.filter(name => !present.has(name))
+      if (missing.length) throw new Error(`Database schema incomplete: missing table(s): ${missing.join(', ')}`)
+    })().catch((err) => {
+      schemaPromise = undefined
+      throw err
+    })
   }
   return schemaPromise
 }
@@ -107,7 +113,7 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' })
 })
 
-const PORT = process.env.PORT || 4000
+const PORT = Number(process.env.PORT || 4000)
 if (!process.env.VERCEL) app.listen(PORT, () => console.log(`MangoCode server running on :${PORT}`))
 
 export default app

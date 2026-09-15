@@ -5,7 +5,7 @@ import { checkRateLimit, clientIp } from '../rateLimit.js'
 
 export const authRouter = Router()
 
-const SESSION_COOKIE = 'mangocode_session'
+const SESSION_COOKIE = '__Host-mangocode_session'
 const SESSION_DAYS = 30
 const PASSWORD_SALT_BYTES = 16
 const PASSWORD_KEY_BYTES = 64
@@ -14,9 +14,10 @@ const SESSION_BYTES = 32
 const AUTH_WINDOW_MS = 60_000
 const AUTH_IP_LIMIT = 30
 const AUTH_IDENTITY_LIMIT = 8
+const MIN_NEW_PASSWORD_LENGTH = 12
 
 function normalizeEmail(value) {
-  return String(value || '').trim().toLowerCase()
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
 }
 
 function publicUser(row) {
@@ -25,15 +26,15 @@ function publicUser(row) {
 }
 
 function parseCookies(header = '') {
-  return Object.fromEntries(header.split(';').map(part => {
+  const result = {}
+  for (const part of String(header).split(';')) {
     const i = part.indexOf('=')
-    if (i < 0) return ['', '']
+    if (i < 0) continue
     try {
-      return [decodeURIComponent(part.slice(0, i).trim()), decodeURIComponent(part.slice(i + 1).trim())]
-    } catch {
-      return ['', '']
-    }
-  }).filter(([k]) => k))
+      result[decodeURIComponent(part.slice(0, i).trim())] = decodeURIComponent(part.slice(i + 1).trim())
+    } catch {}
+  }
+  return result
 }
 
 function hashSession(token) {
@@ -70,22 +71,25 @@ async function verifyPassword(password, encoded) {
 }
 
 function setSessionCookie(res, token) {
-  const secure = process.env.NODE_ENV === 'production' || process.env.VERCEL
-  const flags = [`${SESSION_COOKIE}=${encodeURIComponent(token)}`, `Max-Age=${SESSION_DAYS * 86400}`, 'Path=/', 'HttpOnly', 'SameSite=Lax']
-  if (secure) flags.push('Secure')
+  const flags = [
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
+    `Max-Age=${SESSION_DAYS * 86400}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Strict',
+    'Secure',
+  ]
   res.setHeader('Set-Cookie', flags.join('; '))
 }
 
 function clearSessionCookie(res) {
-  const secure = process.env.NODE_ENV === 'production' || process.env.VERCEL
-  const flags = [`${SESSION_COOKIE}=`, 'Max-Age=0', 'Path=/', 'HttpOnly', 'SameSite=Lax']
-  if (secure) flags.push('Secure')
-  res.setHeader('Set-Cookie', flags.join('; '))
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict; Secure`)
 }
 
 async function createSession(userId) {
   const token = crypto.randomBytes(SESSION_BYTES).toString('base64url')
   const expires = new Date(Date.now() + SESSION_DAYS * 86400_000).toISOString()
+  await db.execute({ sql: 'DELETE FROM sessions WHERE expires_at <= CURRENT_TIMESTAMP', args: [] })
   await db.execute({ sql: 'INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)', args: [hashSession(token), userId, expires] })
   return token
 }
@@ -94,16 +98,14 @@ async function getSessionUser(req) {
   const token = parseCookies(req.headers.cookie).mangocode_session
   if (!token || token.length < 32 || token.length > 256) return null
   const result = await db.execute({
-    sql: `SELECT u.id, u.email, u.name FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > CURRENT_TIMESTAMP`,
+    sql: `SELECT u.id, u.email, u.name
+          FROM sessions s JOIN users u ON u.id = s.user_id
+          WHERE s.token_hash = ? AND s.expires_at > CURRENT_TIMESTAMP`,
     args: [hashSession(token)],
   })
   return publicUser(result.rows[0])
 }
 
-// DB-backed rate limiting (see ../rateLimit.js) — Vercel serverless functions
-// share no in-process memory between invocations/instances, so an in-memory
-// Map resets on every cold start and doesn't actually enforce the limit it
-// appears to.
 async function guard(req, res, next) {
   try {
     const ip = clientIp(req)
@@ -124,17 +126,15 @@ async function guard(req, res, next) {
 function originAllowed(req) {
   const origin = req.headers.origin
   if (!origin) return true
-  const allowed = new Set([
-    process.env.CLIENT_URL,
-    'https://mangocode.vercel.app',
-    'http://localhost:5173',
-    'http://localhost:4173',
-  ].filter(Boolean))
-  return allowed.has(origin)
+  const allowed = [process.env.CLIENT_URL, 'https://mangocode.vercel.app'].filter(Boolean)
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    allowed.push('http://localhost:5173', 'http://localhost:4173')
+  }
+  return allowed.includes(origin)
 }
 
 authRouter.use((req, res, next) => {
-  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('Cache-Control', 'no-store, max-age=0')
   if (req.method === 'POST' && !originAllowed(req)) return res.status(403).json({ error: 'Origin not allowed.' })
   if (req.method === 'POST') return guard(req, res, next)
   next()
@@ -143,15 +143,20 @@ authRouter.use((req, res, next) => {
 authRouter.post('/register', async (req, res, next) => {
   try {
     const email = normalizeEmail(req.body?.email)
-    const name = String(req.body?.name || '').trim()
-    const password = String(req.body?.password || '')
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : ''
+    const password = typeof req.body?.password === 'string' ? req.body.password : ''
     if (!email || email.length > 254 || !/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address.' })
     if (!name || name.length > 60) return res.status(400).json({ error: 'Enter a name between 1 and 60 characters.' })
-    if (password.length < 8 || password.length > 128) return res.status(400).json({ error: 'Password must be 8–128 characters.' })
+    if (password.length < MIN_NEW_PASSWORD_LENGTH || password.length > 128) return res.status(400).json({ error: `Password must be ${MIN_NEW_PASSWORD_LENGTH}–128 characters.` })
     const existing = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [email] })
     if (existing.rows.length) return res.status(409).json({ error: 'Could not create that account. Try signing in instead.' })
     const id = crypto.randomUUID()
-    await db.execute({ sql: 'INSERT INTO users (id, email, name, password_hash, auth_provider) VALUES (?, ?, ?, ?, ?)', args: [id, email, name, await encodePassword(password), 'password'] })
+    try {
+      await db.execute({ sql: 'INSERT INTO users (id, email, name, password_hash, auth_provider) VALUES (?, ?, ?, ?, ?)', args: [id, email, name, await encodePassword(password), 'password'] })
+    } catch (err) {
+      if (err?.code === '23505') return res.status(409).json({ error: 'Could not create that account. Try signing in instead.' })
+      throw err
+    }
     const token = await createSession(id)
     setSessionCookie(res, token)
     res.status(201).json({ user: { id, email, name } })
@@ -161,7 +166,8 @@ authRouter.post('/register', async (req, res, next) => {
 authRouter.post('/login', async (req, res, next) => {
   try {
     const email = normalizeEmail(req.body?.email)
-    const password = String(req.body?.password || '')
+    const password = typeof req.body?.password === 'string' ? req.body.password : ''
+    if (!email || email.length > 254 || !/^\S+@\S+\.\S+$/.test(email) || !password || password.length > 128) return res.status(401).json({ error: 'Email or password is incorrect.' })
     const result = await db.execute({ sql: 'SELECT id, email, name, password_hash FROM users WHERE email = ?', args: [email] })
     const user = result.rows[0]
     if (!user?.password_hash || !(await verifyPassword(password, user.password_hash))) return res.status(401).json({ error: 'Email or password is incorrect.' })
@@ -173,7 +179,7 @@ authRouter.post('/login', async (req, res, next) => {
 
 authRouter.post('/google', async (req, res, next) => {
   try {
-    const credential = String(req.body?.credential || '')
+    const credential = typeof req.body?.credential === 'string' ? req.body.credential : ''
     const clientId = process.env.GOOGLE_CLIENT_ID
     if (!clientId) return res.status(503).json({ error: 'Google sign-in is not configured yet.' })
     if (!credential || credential.length > 10000) return res.status(400).json({ error: 'Invalid Google credential.' })
@@ -188,8 +194,14 @@ authRouter.post('/google', async (req, res, next) => {
     let user = result.rows[0]
     if (!user) {
       const id = crypto.randomUUID()
-      await db.execute({ sql: 'INSERT INTO users (id, email, name, google_sub, auth_provider) VALUES (?, ?, ?, ?, ?)', args: [id, email, name, claims.sub, 'google'] })
-      user = { id, email, name }
+      try {
+        await db.execute({ sql: 'INSERT INTO users (id, email, name, google_sub, auth_provider) VALUES (?, ?, ?, ?, ?)', args: [id, email, name, claims.sub, 'google'] })
+      } catch (err) {
+        if (err?.code !== '23505') throw err
+        result = await db.execute({ sql: 'SELECT id, email, name FROM users WHERE google_sub = ? OR email = ?', args: [claims.sub, email] })
+        user = result.rows[0]
+      }
+      user ||= { id, email, name }
     } else {
       await db.execute({ sql: 'UPDATE users SET google_sub = COALESCE(google_sub, ?), name = ? WHERE id = ?', args: [claims.sub, name, user.id] })
       user = { ...user, name }
