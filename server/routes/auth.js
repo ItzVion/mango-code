@@ -95,7 +95,7 @@ async function createSession(userId) {
 }
 
 async function getSessionUser(req) {
-  const token = parseCookies(req.headers.cookie).mangocode_session
+  const token = parseCookies(req.headers.cookie)[SESSION_COOKIE]
   if (!token || token.length < 32 || token.length > 256) return null
   const result = await db.execute({
     sql: `SELECT u.id, u.email, u.name
@@ -214,7 +214,7 @@ authRouter.post('/google', async (req, res, next) => {
 
 authRouter.post('/logout', async (req, res, next) => {
   try {
-    const token = parseCookies(req.headers.cookie).mangocode_session
+    const token = parseCookies(req.headers.cookie)[SESSION_COOKIE]
     if (token) await db.execute({ sql: 'DELETE FROM sessions WHERE token_hash = ?', args: [hashSession(token)] })
     clearSessionCookie(res)
     res.json({ ok: true })
