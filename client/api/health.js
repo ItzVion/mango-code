@@ -1,33 +1,43 @@
-import { createClient } from '@libsql/client'
+import { db } from '../../server/db.js'
 
 const PISTON_URL = process.env.PISTON_URL || 'https://emkc.org/api/v2/piston'
 
-export default async function handler(req, res) {
-  const result = { ok: true, runtime: 'vercel', tursoConfigured: Boolean(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN), database: false, catalog: null, piston: false }
+export default async function handler(_req, res) {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-store, max-age=0')
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive')
+
   try {
-    if (result.tursoConfigured) {
-      const db = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN })
-      const [courses, lessons, exercises, quizzes] = await Promise.all([
-        db.execute('SELECT COUNT(*) AS count FROM courses'),
-        db.execute('SELECT COUNT(*) AS count FROM lessons'),
-        db.execute('SELECT COUNT(*) AS count FROM exercises'),
-        db.execute('SELECT COUNT(*) AS count FROM quiz_questions'),
-      ])
-      result.database = true
-      result.catalog = {
+    const [connection, courses, lessons, exercises, quizzes] = await Promise.all([
+      db.execute('SELECT 1 AS ok'),
+      db.execute('SELECT COUNT(*)::bigint AS count FROM courses'),
+      db.execute('SELECT COUNT(*)::bigint AS count FROM lessons'),
+      db.execute('SELECT COUNT(*)::bigint AS count FROM exercises'),
+      db.execute('SELECT COUNT(*)::bigint AS count FROM quiz_questions'),
+    ])
+
+    let piston = false
+    try {
+      const response = await fetch(`${PISTON_URL}/runtimes`, { signal: AbortSignal.timeout(5000) })
+      piston = response.ok
+    } catch {
+      // Database health is reported independently of the external code runner.
+    }
+
+    return res.status(200).json({
+      ok: true,
+      runtime: 'vercel',
+      database: connection.rows[0]?.ok === 1,
+      catalog: {
         courses: Number(courses.rows[0]?.count || 0),
         lessons: Number(lessons.rows[0]?.count || 0),
         exercises: Number(exercises.rows[0]?.count || 0),
         quizzes: Number(quizzes.rows[0]?.count || 0),
-      }
-    }
-    const response = await fetch(`${PISTON_URL}/runtimes`, { signal: AbortSignal.timeout(5000) })
-    result.piston = response.ok
-  } catch {
-    result.ok = false
+      },
+      piston,
+    })
+  } catch (error) {
+    console.error('MangoCode PostgreSQL health check failed:', error?.message || error)
+    return res.status(503).json({ ok: false, runtime: 'vercel', database: false })
   }
-  res.statusCode = result.ok ? 200 : 503
-  res.setHeader('Content-Type', 'application/json; charset=utf-8')
-  res.setHeader('Cache-Control', 'no-store')
-  res.end(JSON.stringify(result))
 }
