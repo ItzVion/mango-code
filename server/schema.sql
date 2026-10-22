@@ -99,3 +99,23 @@ CREATE INDEX IF NOT EXISTS idx_test_attempts_user ON test_attempts(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start);
+
+-- Security middleware state. These tables are required by server/security/emergencyLockdown.js.
+CREATE TABLE IF NOT EXISTS security_incidents (
+  id UUID PRIMARY KEY,
+  kind TEXT NOT NULL,
+  path TEXT NOT NULL,
+  status INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_security_incidents_created_at
+  ON security_incidents(created_at);
+
+CREATE TABLE IF NOT EXISTS security_lockdown (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  active_until TIMESTAMPTZ NOT NULL,
+  reason TEXT NOT NULL,
+  incident_id UUID NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
