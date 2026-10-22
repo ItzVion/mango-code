@@ -6,20 +6,26 @@ MangoCode is an animated coding-learning platform for HTML & CSS, JavaScript, Py
 
 - Frontend: React + Vite + Tailwind CSS v4 + Motion
 - Production hosting: Vercel
-- Production API: Vercel serverless function in `client/api/index.js`
-- Database: Turso / libSQL
+- Production API: Vercel serverless handler at `api/index.js`, backed by the PostgreSQL server implementation in `server/index.js`
+- Database: Neon/PostgreSQL, configured through `DATABASE_URL`
 - Code execution: Piston API for Python, JavaScript, C, and C++ exercises
 
 ## Local development
 
 Run the API and client separately:
 
-```text
-cd server && npm install
-# create server/.env from .env.example
+```sh
+cd server
+npm install
+# Create server/.env from server/.env.example and set DATABASE_URL.
 npm run dev
+```
 
-cd ../client && npm install
+In another terminal:
+
+```sh
+cd client
+npm install
 npm run dev
 ```
 
@@ -27,16 +33,15 @@ The Vite dev server proxies `/api` to `http://localhost:4000`.
 
 ## Database
 
-The production API creates the required tables on first request and seeds the learning catalog when the database is empty or missing catalog rows. `server/schema.sql` and `server/seed.sql` remain useful for manual/local database setup.
+The production API expects the PostgreSQL schema to exist and checks for the required tables at startup/request time. `server/schema.sql` and `server/seed.sql` are available for database setup and catalog seeding. Avoid running schema resets against production; back up data and review migrations before applying changes.
 
 ## Vercel
 
-The MangoCode Vercel project currently uses `client` as its Root Directory. The client contains the Vite app and `client/api/index.js`, which handles `/api/*` through `client/vercel.json`.
+The Vercel project uses the repository root as its Root Directory. The root `vercel.json` installs server and client dependencies, builds the client into `client/dist`, serves the SPA, and routes `/api/*` to `api/index.js`. The handler delegates API requests to the PostgreSQL-backed server.
 
 Required Production environment variables:
 
-- `TURSO_DATABASE_URL`
-- `TURSO_AUTH_TOKEN`
-- `PISTON_URL` (normally `https://emkc.org/api/v2/piston`)
+- `DATABASE_URL` — Neon/PostgreSQL connection string
+- `PISTON_URL` — optional; defaults to `https://emkc.org/api/v2/piston`
 
 Never commit `.env` files or credentials.
