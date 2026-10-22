@@ -1,7 +1,7 @@
 {
-  "installCommand": "npm install && cd ../server && npm install",
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
+  "installCommand": "cd server && npm install --no-audit --no-fund && cd ../client && npm install --no-audit --no-fund",
+  "buildCommand": "cd client && npm run build",
+  "outputDirectory": "client/dist",
   "headers": [
     {
       "source": "/(.*)",
