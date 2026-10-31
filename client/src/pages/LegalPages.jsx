@@ -4,8 +4,16 @@ import { Link } from 'react-router-dom'
 const SUPPORT_EMAIL = String(import.meta.env.VITE_SUPPORT_EMAIL || '').trim()
 
 function SupportContact() {
-  return SUPPORT_EMAIL
-    ? <a className="font-semibold underline underline-offset-4" href={'mailto:' + SUPPORT_EMAIL}>{SUPPORT_EMAIL}</a>
+  const [supportEmail, setSupportEmail] = useState(SUPPORT_EMAIL)
+  useEffect(() => {
+    let active = true
+    fetch('/api/status', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(data => {
+      if (active && typeof data?.supportEmail === 'string' && data.supportEmail.trim()) setSupportEmail(data.supportEmail.trim())
+    }).catch(() => {})
+    return () => { active = false }
+  }, [])
+  return supportEmail
+    ? <a className="font-semibold underline underline-offset-4" href={'mailto:' + supportEmail}>{supportEmail}</a>
     : <span className="font-semibold">A support email has not been published for this deployment yet.</span>
 }
 
