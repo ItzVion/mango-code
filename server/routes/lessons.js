@@ -11,6 +11,7 @@ async function getCourseUnitStates(courseId, userId) {
   })
   const units = result.rows
   if (!units.length) return []
+  if (!userId) return units.map(unit => ({ ...unit, unlocked: true, completed: false, passed: false }))
 
   let completed = new Set()
   let passedTests = new Set()
