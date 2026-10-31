@@ -5,6 +5,7 @@ import { lessonsRouter } from './routes/lessons.js'
 import { exercisesRouter } from './routes/exercises.js'
 import { authRouter } from './routes/auth.js'
 import { bugreportRouter } from './routes/bugreport.js'
+import { adminRouter } from './routes/admin.js'
 import { db } from './db.js'
 import { checkRateLimit, clientIp } from './rateLimit.js'
 
@@ -104,6 +105,7 @@ app.use('/api/quiz/check', async (req, res, next) => {
 })
 
 app.use('/api/auth', authRouter)
+app.use('/api/admin', adminRouter)
 app.use('/api/bugreport', bugreportRouter)
 app.use('/api', lessonsRouter)
 app.use('/api/exercises', exercisesRouter)

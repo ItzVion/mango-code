@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { optionalAuth } from '../middleware/auth.js'
 import { checkRateLimit, clientIp } from '../rateLimit.js'
+import { db } from '../db.js'
 
 export const bugreportRouter = Router()
 
@@ -26,6 +27,9 @@ bugreportRouter.post('/', optionalAuth, async (req, res, next) => {
     return res.status(400).json({ error: 'Describe the problem in 10–1000 characters.' })
   }
   if (!page.startsWith('/') || page.startsWith('//')) return res.status(400).json({ error: 'Invalid page path.' })
+
+  const saved = await db.execute({ sql: 'INSERT INTO bug_reports (user_id, category, page, description) VALUES (?, ?, ?, ?) RETURNING id', args: [req.userId || null, category || 'Bug', page, description] })
+  const reportId = saved.rows[0]?.id
 
   const webhook = getWebhookUrl()
   if (!webhook) return res.status(503).json({ error: 'Bug reporting is not configured yet.' })
@@ -58,7 +62,7 @@ bugreportRouter.post('/', optionalAuth, async (req, res, next) => {
       console.error('Discord bug report delivery failed with status:', response.status)
       return res.status(502).json({ error: 'Discord could not accept the report. Please try again later.' })
     }
-    res.json({ success: true })
+    res.json({ success: true, reportId })
   } catch (error) {
     console.error('Bug report delivery failed:', error?.message || error)
     res.status(502).json({ error: 'Could not deliver the report. Please try again later.' })
