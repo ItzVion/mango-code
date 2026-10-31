@@ -8,6 +8,8 @@ import { setAccount } from '../../lib/user'
 
 export function AppShell({ children }) {
   const [maintenance,setMaintenance] = useState(false)
+  const [sidebarCollapsed,setSidebarCollapsed] = useState(() => { try { return window.localStorage.getItem('mangocode-sidebar-collapsed') === 'true' } catch { return false } })
+  useEffect(() => { try { window.localStorage.setItem('mangocode-sidebar-collapsed', String(sidebarCollapsed)) } catch {} }, [sidebarCollapsed])
   useEffect(() => {
     fetch('/api/status',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(d=>setMaintenance(Boolean(d?.maintenanceMode))).catch(()=>{})
   },[])
@@ -25,8 +27,8 @@ export function AppShell({ children }) {
 
   return (
     <div className="min-h-screen bg-paper">
-      <Sidebar />
-      <div className="flex min-h-screen flex-col md:pl-64">
+      <Sidebar collapsed={sidebarCollapsed} onToggleCollapsed={() => setSidebarCollapsed(value => !value)} />
+      <div className={'flex min-h-screen flex-col transition-[padding] duration-200 ' + (sidebarCollapsed ? 'md:pl-[76px]' : 'md:pl-64')}>
         <Topbar />
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-24 pt-6 sm:px-6 md:px-8 md:pb-12">{maintenance && <div role="status" className="mb-5 rounded-xl border border-mango/40 bg-mango/10 px-4 py-3 text-sm font-medium text-ink">MangoCode is in maintenance mode. Some learning and account services are temporarily paused.</div>}{children}</main>
         <Footer />
