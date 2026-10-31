@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
-import { CheckCircle2, XCircle, Play, Lightbulb } from 'lucide-react'
+import { CheckCircle2, XCircle, Play, Lightbulb, RotateCcw } from 'lucide-react'
 import { apiHeaders } from '../../lib/user'
 
-export function ExerciseBlock({ id, prompt, starterCode }) {
+export function ExerciseBlock({ id, prompt, starterCode, language = 'Code' }) {
   const [code, setCode] = useState(starterCode || '')
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -25,41 +24,39 @@ export function ExerciseBlock({ id, prompt, starterCode }) {
       }
       setResult(data)
     } catch {
-      setResult({ pass: false, message: 'Could not reach the code runner. Please try again.' })
+      setResult({ pass: false, message: 'Could not reach the code runner. Check your connection and try again.' })
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-ink/10 bg-card p-5 shadow-sm">
-      <div className="flex items-start gap-3">
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-mango/15 text-mango"><Lightbulb size={17} /></div>
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">Your challenge</p>
-          <p className="mt-1 font-medium leading-6">{prompt}</p>
+    <section className="overflow-hidden rounded-xl border border-ink/15 bg-card">
+      <div className="border-b border-ink/10 px-4 py-4 sm:px-5">
+        <div className="flex items-start gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-paper-dim text-mango-deep"><Lightbulb size={17}/></div>
+          <div><p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Practical exercise</p><h4 className="mt-1 font-semibold">Your turn to write the code</h4></div>
         </div>
+        <p className="mt-3 text-sm leading-6 text-ink-soft">{prompt}</p>
+        <p className="mt-2 text-xs text-ink-soft">Write your solution below, run it, then use the result to decide what to fix.</p>
       </div>
-
-      <div className="mt-4 grid gap-2 rounded-xl bg-ink/[0.04] p-3 text-xs text-ink-soft sm:grid-cols-3">
-        <div><span className="font-bold text-ink">1.</span> Read the goal</div>
-        <div><span className="font-bold text-ink">2.</span> Try it yourself</div>
-        <div><span className="font-bold text-ink">3.</span> Run & learn from the result</div>
+      <div className="bg-[#171d1a]">
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-2 text-xs text-white/60">
+          <span>{language} · editor</span><span>Editable code</span>
+        </div>
+        <textarea value={code} onChange={event => setCode(event.target.value)} spellCheck={false} aria-label="Your code"
+          className="min-h-48 w-full resize-y bg-transparent p-4 font-mono text-[13px] leading-6 text-[#f1f4ee] outline-none placeholder:text-white/30 focus:ring-2 focus:ring-inset focus:ring-mango/50" />
       </div>
-
-      <label className="mt-4 block text-xs font-semibold text-ink-soft">Your code</label>
-      <textarea value={code} onChange={(e) => setCode(e.target.value)} spellCheck={false} aria-label="Your code" className="mt-2 h-40 w-full rounded-xl border border-ink/10 bg-ink p-4 font-mono text-sm leading-6 text-paper outline-none transition focus:border-mango focus:ring-2 focus:ring-mango/15" />
-      <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={runCheck} disabled={loading} className="mt-3 inline-flex items-center gap-2 rounded-full bg-mango px-5 py-2 text-sm font-semibold text-ink disabled:opacity-60">
-        <Play size={15} /> {loading ? 'Checking…' : 'Run & check'}
-      </motion.button>
-      <AnimatePresence>
-        {result && (
-          <motion.div initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8 }} className={`mt-3 flex items-start gap-2 rounded-xl border p-3 text-sm ${result.pass ? 'border-leaf/30 bg-leaf/10 text-leaf' : 'border-rose/30 bg-rose/10 text-rose'}`}>
-            {result.pass ? <CheckCircle2 size={17} className="shrink-0" /> : <XCircle size={17} className="shrink-0" />}
-            <span>{result.message}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+      <div className="flex flex-wrap items-center gap-2 border-t border-ink/10 px-4 py-3 sm:px-5">
+        <button type="button" onClick={runCheck} disabled={loading || !code.trim()} className="inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-sm font-semibold text-paper hover:bg-ink/85 disabled:opacity-50">
+          <Play size={15}/>{loading ? 'Running code…' : 'Run code'}
+        </button>
+        <button type="button" onClick={() => { setCode(starterCode || ''); setResult(null) }} className="inline-flex items-center gap-2 rounded-lg border border-ink/15 px-3 py-2.5 text-sm font-medium text-ink-soft hover:bg-paper"><RotateCcw size={14}/>Reset</button>
+      </div>
+      {result && <div role="status" aria-live="polite" className={`flex items-start gap-2 border-t px-4 py-3 text-sm leading-6 sm:px-5 ${result.pass ? 'border-leaf/25 bg-leaf/5 text-leaf' : 'border-rose/25 bg-rose/5 text-rose'}`}>
+        {result.pass ? <CheckCircle2 size={17} className="mt-0.5 shrink-0"/> : <XCircle size={17} className="mt-0.5 shrink-0"/>}
+        <span>{result.message}</span>
+      </div>}
+    </section>
   )
 }
