@@ -6,7 +6,6 @@ import { exercisesRouter } from './routes/exercises.js'
 import { authRouter } from './routes/auth.js'
 import { bugreportRouter } from './routes/bugreport.js'
 import { adminRouter } from './routes/admin.js'
-import { adminRouter } from './routes/admin.js'
 import { db } from './db.js'
 import { checkRateLimit, clientIp } from './rateLimit.js'
 
@@ -45,7 +44,7 @@ app.use(cors({
     return callback(null, false)
   },
   credentials: true,
-  methods: ['GET', 'HEAD', 'POST', 'OPTIONS'],
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type'],
   maxAge: 86400,
 }))
@@ -61,7 +60,7 @@ app.use((req, res, next) => {
   return res.status(403).json({ error: 'Cross-site request blocked.' })
 })
 
-app.use(express.json({ limit: '32kb', strict: true }))
+app.use(express.json({ limit: '128kb', strict: true }))
 
 let schemaPromise
 async function ensureAuthSchema() {
@@ -116,10 +115,18 @@ app.get('/api/legal/:slug', async (req, res, next) => {
   } catch (error) { next(error) }
 })
 app.get('/api/status', async (_req, res, next) => {
-  try { const result = await db.execute({ sql: "SELECT value FROM admin_settings WHERE key = 'maintenance_mode'" }); res.setHeader('Cache-Control','no-store'); res.json({ maintenanceMode: result.rows[0]?.value === 'true' }) } catch (error) { next(error) }
+  try {
+    const result = await db.execute({ sql: "SELECT key, value FROM admin_settings WHERE key IN ('maintenance_mode', 'support_email')" })
+    const settings = Object.fromEntries(result.rows.map(row => [row.key, row.value]))
+    res.setHeader('Cache-Control', 'no-store')
+    res.json({
+      maintenanceMode: settings.maintenance_mode === 'true',
+      supportEmail: settings.support_email ?? process.env.SUPPORT_EMAIL ?? '',
+    })
+  } catch (error) { next(error) }
 })
 app.use('/api', async (req, res, next) => {
-  if (req.path.startsWith('/auth') || req.path.startsWith('/admin') || req.path.startsWith('/legal/') || req.path === '/status' || req.path === '/health') return next()
+  if (req.path.startsWith('/auth') || req.path.startsWith('/admin') || req.path.startsWith('/legal/') || req.path.startsWith('/bugreport') || req.path === '/status' || req.path === '/health') return next()
   try { const result = await db.execute({ sql: "SELECT value FROM admin_settings WHERE key = 'maintenance_mode'" }); if (result.rows[0]?.value === 'true') return res.status(503).json({ error: 'MangoCode is temporarily in maintenance mode. Please check back shortly.' }); next() } catch (error) { next(error) }
 })
 app.use('/api/bugreport', bugreportRouter)
