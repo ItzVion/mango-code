@@ -4,6 +4,7 @@ import nodemailer from 'nodemailer'
 import { resolvePublicSmtpHost } from '../lib/smtpSecurity.js'
 import { db } from '../db.js'
 import { requireOwner } from '../middleware/auth.js'
+import { checkRateLimit, clientIp } from '../rateLimit.js'
 
 export const adminRouter = Router()
 adminRouter.use(requireOwner)
@@ -173,9 +174,12 @@ adminRouter.put('/smtp',async(req,res,next)=>{
 })
 adminRouter.post('/smtp/test',async(req,res,next)=>{
  try {
+  const allowed=await checkRateLimit('admin-smtp-test:'+clientIp(req),5,600000)
+  if(!allowed)return res.status(429).json({error:'Too many SMTP tests. Please wait and try again.'})
   const raw=await getSetting('smtp_config','')
   if(!raw)return res.status(400).json({error:'Save SMTP settings first.'})
   const config=JSON.parse(decrypt(raw))
+  try { await resolvePublicSmtpHost(config.host) } catch { return res.status(400).json({error:'SMTP host must resolve only to public IP addresses.'}) }
   const to=String(req.body?.to||'').trim()
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))return res.status(400).json({error:'Enter a valid test recipient.'})
   const transporter=nodemailer.createTransport({host:config.host,port:config.port,secure:config.secure,auth:{user:config.user,pass:config.pass},connectionTimeout:8000,greetingTimeout:8000,socketTimeout:10000})
