@@ -25,7 +25,7 @@ function LegalLayout({ label, title, updated, slug, children }) {
     <header className="border-b border-ink/10 pb-5"><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1><p className="mt-2 text-xs text-ink-soft">Last updated: {updated}</p></header>
     <article className="space-y-6 rounded-xl border border-ink/10 bg-card p-5 text-sm leading-7 text-ink-soft sm:p-8">{override !== null ? <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7 text-ink-soft">{override}</pre> : children}</article>
     <p className="text-xs text-ink-soft">Questions or requests: <SupportContact /></p>
-    <div className="flex flex-wrap gap-4 text-xs font-semibold"><Link to="/about" className="underline">About MangoCode</Link><Link to="/privacy" className="underline">Privacy</Link><Link to="/terms" className="underline">Terms</Link><Link to="/third-party-notice" className="underline">Third-party services</Link></div>
+    <div className="flex flex-wrap gap-4 text-xs font-semibold"><Link to="/about" className="underline">About MangoCode</Link><Link to="/privacy" className="underline">Privacy</Link><Link to="/terms" className="underline">Terms</Link><Link to="/refund" className="underline">Refunds</Link><Link to="/third-party-notice" className="underline">Third-party services</Link></div>
   </main>
 }
 
@@ -55,6 +55,7 @@ export function PrivacyPage() {
     </ul></Section>
     <Section title="Google sign-in"><p>If you choose Google sign-in, Google provides an identity credential that MangoCode verifies on the server. MangoCode may receive your Google account identifier, verified email and profile name. The current sign-in flow requests identity information only; it does not ask for access to Gmail, Google Drive, contacts or other Google content.</p></Section>
     <Section title="Code execution"><p>When you run a coding practical, the submitted code and exercise input are sent to the configured Piston code-execution service so it can run the program and return output. For signed-in users, the code submitted for an exercise attempt and its pass/fail result may be stored in MangoCode's database so the account can show a result history. Do not submit passwords, API keys, personal information or other secrets in code.</p></Section>
+    <Section title="Donations and UPI claims"><p>If you make a contribution, MangoCode stores the amount and payment reference needed to reconcile it. Razorpay processes gateway payment details. If UPI QR mode is enabled, a signed-in contributor may submit an amount and UTR for manual review; the site owner sees those details to match the transfer. A supporter indicator is granted only after Razorpay confirms a captured payment or the owner approves a UPI claim.</p></Section>
     <Section title="How information is used"><p>Information is used to authenticate accounts, verify email addresses, restore access, save learning progress, evaluate exercises and assessments, prevent abuse, maintain the service, and respond to reports or support requests.</p></Section>
     <Section title="Service providers"><p>MangoCode uses third-party infrastructure for database hosting, website hosting, Google sign-in, code execution, email delivery and Discord bug-report delivery. A bug report is forwarded to the project's configured Discord webhook. Provider names and links are listed in the <Link className="font-semibold underline text-ink" to="/third-party-notice">Third-party Services Notice</Link>. Their own terms and privacy policies apply to the services they provide.</p></Section>
     <Section title="Cookies and security"><p>The server uses a Secure, HttpOnly session cookie to keep you signed in. The session token is stored as a hash in the database. Email verification and password reset codes are stored as keyed hashes, expire after a short period and have attempt limits. No internet service can guarantee absolute security.</p></Section>
@@ -83,11 +84,22 @@ export function TermsPage() {
   </LegalLayout>
 }
 
+export function RefundPage() {
+  return <LegalLayout label="LEGAL" title="Refund Policy" updated="November 1, 2026" slug="refund">
+    <p className="text-base text-ink">MangoCode contributions are voluntary and help support hosting and continued development.</p>
+    <Section title="Razorpay contributions"><p>Razorpay processes card, UPI and other enabled payment methods. MangoCode records the payment amount, order/payment references and confirmation status, not full card numbers, CVV codes or UPI PINs. Contact support promptly with the transaction reference if a contribution was duplicated, charged for the wrong amount or not reflected correctly.</p></Section>
+    <Section title="Manual UPI claims"><p>UPI QR claims remain pending until the owner compares the submitted amount and UTR with the bank or UPI transaction record. A supporter indicator is granted only after approval. Submitting a claim does not itself prove that funds were received.</p></Section>
+    <Section title="Contact"><p>For help, contact <SupportContact /> and include the date, amount and provider transaction reference. Never send a UPI PIN, card security code or password.</p></Section>
+  </LegalLayout>
+}
+
 export function ThirdPartyNoticePage() {
   const providers = [
     ['Google Identity Services', 'Optional account authentication. Google supplies an ID token; MangoCode verifies it and uses the verified identity claims to create a session.', 'https://developers.google.com/identity/gsi/web'],
     ['Neon', 'PostgreSQL database hosting for accounts, lessons, progress, assessment attempts and exercise history.', 'https://neon.tech/privacy-policy'],
     ['Vercel', 'Website hosting, deployment and serverless API delivery.', 'https://vercel.com/legal/privacy-policy'],
+    ['Razorpay', 'Processes optional contributions and returns transaction identifiers and capture status for server-side verification.', 'https://razorpay.com/privacy/'],
+    ['QR Server', 'Generates the scannable UPI QR image from the configured payment URI; the UPI ID and selected amount are included in the QR image request.', 'https://goqr.me/api/'],
     ['Piston', 'Remote execution of code submitted for supported programming practicals.', 'https://github.com/engineer-man/piston'],
     ['Discord', 'Receives bug-report descriptions, category, page path and a user identifier when the reporter is signed in, via the configured project webhook.', 'https://discord.com/privacy'],
     ['SMTP / email provider', 'The SMTP provider configured by the project sends verification and password-reset messages to the address the learner submits.', ''],
