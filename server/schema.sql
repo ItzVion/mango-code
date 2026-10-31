@@ -168,3 +168,42 @@ CREATE TABLE IF NOT EXISTS upi_donation_claims (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_upi_one_pending_per_user ON upi_donation_claims(user_id) WHERE status = 'PENDING';
 CREATE INDEX IF NOT EXISTS idx_upi_claims_status_created ON upi_donation_claims(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_upi_claims_user_created ON upi_donation_claims(user_id, created_at DESC);
+
+-- Owner console settings, legal content, feedback and audit records.
+CREATE TABLE IF NOT EXISTS admin_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_by TEXT REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS legal_pages (
+  slug TEXT PRIMARY KEY,
+  content TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_by TEXT REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS bug_reports (
+  id BIGSERIAL PRIMARY KEY,
+  user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  category TEXT NOT NULL DEFAULT 'Bug',
+  page TEXT NOT NULL DEFAULT '/',
+  description TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','IN_PROGRESS','RESOLVED','CLOSED')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+  id BIGSERIAL PRIMARY KEY,
+  actor_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  target_type TEXT,
+  target_id TEXT,
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_bug_reports_status_created ON bug_reports(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit_logs(created_at DESC);
