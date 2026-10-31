@@ -52,7 +52,7 @@ async function transporterConfig() {
       connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 10000,
     }),
     from: process.env.SMTP_FROM_NAME
-      ? '"' + String(process.env.SMTP_FROM_NAME).replace(/["\\r\\n]/g, '') + '" <' + fromAddress + '>'
+      ? '"' + String(process.env.SMTP_FROM_NAME).replace(/["\r\n]/g, '') + '" <' + fromAddress + '>'
       : fromAddress,
   }
 }
