@@ -176,7 +176,7 @@ export default function Lesson() {
         <div className="flex items-center gap-2"><CheckCircle2 size={18}/><h3 className="text-lg font-bold">Check your understanding</h3></div>
         {currentQuestion ? <QuizBlock key={currentQuestion.id} id={currentQuestion.id} question={currentQuestion.question} options={currentQuestion.options} onAnswered={result => setAnsweredQuestions(current => ({ ...current, [currentQuestion.id]: Boolean(result?.correct) }))}/> : <div className="rounded-xl border border-ink/10 bg-card p-6 text-center"><Trophy className="mx-auto text-leaf"/><p className="mt-2 font-semibold">You completed this lesson.</p></div>}
       </div> : <>
-        <div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-lg bg-ink text-paper"><{stepMeta.find(item => item.key === currentKey)?.icon || BookOpen} size={17}/></span><h3 className="text-lg font-bold">{stepMeta.find(item => item.key === currentKey)?.title || 'Lesson'}</h3></div>
+        <div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-lg bg-ink text-paper">{(() => { const Icon = stepMeta.find(item => item.key === currentKey)?.icon || BookOpen; return <Icon size={17}/> })()}</span><h3 className="text-lg font-bold">{stepMeta.find(item => item.key === currentKey)?.title || 'Lesson'}</h3></div>
         <StepContent section={currentKey} sections={sections} lesson={lesson} exerciseLanguage={exercises[0]?.language}/>
         {currentKey === 'YOUR_TURN' && hasExercise && <div className="space-y-4">{exercises.map(ex => <ExerciseBlock key={ex.id} id={ex.id} prompt={ex.prompt} starterCode={ex.starter_code} language={ex.language}/>)}</div>}
       </>}
