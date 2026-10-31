@@ -4,6 +4,7 @@ import 'dotenv/config'
 import { lessonsRouter } from './routes/lessons.js'
 import { exercisesRouter } from './routes/exercises.js'
 import { authRouter } from './routes/auth.js'
+import { bugreportRouter } from './routes/bugreport.js'
 import { db } from './db.js'
 import { checkRateLimit, clientIp } from './rateLimit.js'
 
@@ -64,7 +65,7 @@ let schemaPromise
 async function ensureAuthSchema() {
   if (!schemaPromise) {
     schemaPromise = (async () => {
-      const required = ['users', 'sessions', 'rate_limits', 'lessons', 'courses', 'exercises', 'quiz_questions', 'progress', 'streaks', 'exercise_attempts', 'test_attempts']
+      const required = ['users', 'sessions', 'rate_limits', 'lessons', 'courses', 'exercises', 'quiz_questions', 'progress', 'streaks', 'exercise_attempts', 'test_attempts', 'auth_otps']
       const result = await db.execute({
         sql: `SELECT table_name
               FROM information_schema.tables
@@ -103,6 +104,7 @@ app.use('/api/quiz/check', async (req, res, next) => {
 })
 
 app.use('/api/auth', authRouter)
+app.use('/api/bugreport', bugreportRouter)
 app.use('/api', lessonsRouter)
 app.use('/api/exercises', exercisesRouter)
 app.get('/api/health', (_req, res) => res.json({ ok: true }))

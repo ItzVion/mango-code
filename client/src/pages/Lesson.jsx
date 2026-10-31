@@ -94,6 +94,7 @@ export default function Lesson() {
   const [lesson, setLesson] = useState(null)
   const [error, setError] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [completionError, setCompletionError] = useState('')
   const [step, setStep] = useState(0)
   const [questionIndex, setQuestionIndex] = useState(0)
   const [answeredQuestions, setAnsweredQuestions] = useState({})
@@ -111,11 +112,16 @@ export default function Lesson() {
   async function completeLesson() {
     if (!lesson || saving) return
     setSaving(true)
+    setCompletionError('')
     try {
       const res = await fetch('/api/progress/complete', { method: 'POST', headers: apiHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ lessonId: lesson.id }) })
-      if (!res.ok) throw new Error()
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Could not save lesson progress.')
       navigate(`/course/${lesson.course_id}`)
-    } catch { setSaving(false) }
+    } catch (error) {
+      setCompletionError(error.message || 'Could not save lesson progress.')
+      setSaving(false)
+    }
   }
 
   const isTest = lesson?.unit_type === 'test' || lesson?.unit_type === 'final'
@@ -186,6 +192,7 @@ export default function Lesson() {
         {currentKey === 'YOUR_TURN' && hasExercise && <div className="space-y-4">{exercises.map(ex => <ExerciseBlock key={ex.id} id={ex.id} prompt={ex.prompt} starterCode={ex.starter_code} language={ex.language}/>)}</div>}
       </>}
 
+      {completionError && <div role="alert" className="rounded-lg border border-rose/25 bg-rose/5 p-3 text-sm text-rose">{completionError} {completionError.toLowerCase().includes('sign in') && <Link to="/auth" className="font-semibold underline">Sign in</Link>}</div>}
       <div className="flex items-center justify-between gap-3 border-t border-ink/10 pt-5">
         <button type="button" onClick={previous} disabled={step === 0 && (!isCheck || questionIndex === 0)} className="inline-flex items-center gap-2 rounded-lg border border-ink/15 px-4 py-2.5 text-sm font-semibold text-ink-soft hover:bg-paper disabled:invisible"><ArrowLeft size={15}/>Back</button>
         {isCheck && isLastQuestion ? <button type="button" onClick={completeLesson} disabled={!questionAnswered || saving || lesson.completed} className="inline-flex items-center gap-2 rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-paper hover:bg-ink/85 disabled:opacity-50"><CheckCircle2 size={16}/>{lesson.completed ? 'Completed' : saving ? 'Saving…' : 'Finish lesson'}</button> : <button type="button" onClick={next} disabled={isCheck && !questionAnswered} className="inline-flex items-center gap-2 rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-paper hover:bg-ink/85 disabled:opacity-50">Continue <ArrowRight size={15}/></button>}

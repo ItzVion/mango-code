@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { db } from '../db.js'
+import { optionalAuth } from '../middleware/auth.js'
 
 export const exercisesRouter = Router()
 
@@ -58,7 +59,16 @@ const FILENAME = {
   cpp: 'main.cpp',
 }
 
-exercisesRouter.post('/check', async (req, res) => {
+async function saveAttempt(userId, exerciseId, passed, code) {
+  if (!userId) return false
+  await db.execute({
+    sql: 'INSERT INTO exercise_attempts (user_id, exercise_id, passed, submitted_code) VALUES (?, ?, ?, ?)',
+    args: [userId, exerciseId, passed ? 1 : 0, code.slice(0, MAX_CODE_LENGTH)],
+  })
+  return true
+}
+
+exercisesRouter.post('/check', optionalAuth, async (req, res) => {
   const { exerciseId, code } = req.body || {}
   if (typeof exerciseId !== 'string' || !/^[a-zA-Z0-9_-]{1,120}$/.test(exerciseId) || typeof code !== 'string') {
     return res.status(400).json({ pass: false, message: 'Invalid exercise or code.' })
@@ -120,16 +130,19 @@ exercisesRouter.post('/check', async (req, res) => {
     const stderr = String(run.stderr || compile.stderr || '').slice(0, MAX_OUTPUT_LENGTH)
 
     if ((compile.code != null && compile.code !== 0) || (run.code != null && run.code !== 0)) {
-      return res.json({ pass: false, message: explainError(stderr || 'The program failed to run.') })
+      const saved = await saveAttempt(req.userId, exerciseId, false, code)
+      return res.json({ pass: false, saved, message: explainError(stderr || 'The program failed to run.') })
     }
 
     const actual = String(run.stdout || '').slice(0, MAX_OUTPUT_LENGTH).trim()
     const expected = String(exercise.expected_output || '').slice(0, MAX_OUTPUT_LENGTH).trim()
     const pass = actual === expected
+    const saved = await saveAttempt(req.userId, exerciseId, pass, code)
 
     res.setHeader('Cache-Control', 'no-store')
     return res.json({
       pass,
+      saved,
       message: pass
         ? 'Correct! Your output matched.'
         : `Not quite. Expected "${expected}" but got "${actual || '(nothing)'}".`,

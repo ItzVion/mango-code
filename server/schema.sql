@@ -42,8 +42,28 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT,
   google_sub TEXT UNIQUE,
   auth_provider TEXT NOT NULL DEFAULT 'password',
+  role TEXT NOT NULL DEFAULT 'USER',
+  email_verified_at TIMESTAMPTZ,
+  legal_accepted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS auth_otps (
+  email TEXT NOT NULL,
+  purpose TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  name TEXT,
+  password_hash TEXT,
+  legal_accepted_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_sent_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (email, purpose),
+  CHECK (purpose IN ('register', 'password_reset'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_otps_expiry ON auth_otps(expires_at);
 
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
