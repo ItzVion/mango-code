@@ -15,10 +15,10 @@ function isPrivateIPv6(value) {
   if (ip === '::' || ip === '::1' || ip.startsWith('fc') || ip.startsWith('fd') ||
       ip.startsWith('fe8') || ip.startsWith('fe9') || ip.startsWith('fea') ||
       ip.startsWith('feb') || ip.startsWith('ff')) return true
-  if (ip.startsWith('::ffff:')) {
-    const mapped = ip.slice(7)
-    if (net.isIP(mapped) === 4) return isPrivateIPv4(mapped)
-  }
+  if (ip.startsWith('::ffff:')) return true
+  const first = Number.parseInt(ip.split(':')[0] || '0', 16)
+  if (first < 0x2000 || first > 0x3fff) return true
+  if (ip.startsWith('2001:db8:') || ip.startsWith('2001:10:')) return true
   return false
 }
 function isPublicAddress(address) {
