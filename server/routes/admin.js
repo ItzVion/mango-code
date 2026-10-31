@@ -137,7 +137,7 @@ adminRouter.post('/smtp/test',async(req,res,next)=>{
   const transporter=nodemailer.createTransport({host:config.host,port:config.port,secure:config.secure,auth:{user:config.user,pass:config.pass},connectionTimeout:8000,greetingTimeout:8000,socketTimeout:10000})
   await transporter.verify()
   await transporter.sendMail({from:config.from,to,subject:'MangoCode SMTP test',text:'Your MangoCode SMTP configuration is working.'})
-  await audit(req,'ADMIN_SMTP_TEST','settings',{to})
+  await audit(req,'ADMIN_SMTP_TEST','settings',null,{to})
   res.json({success:true})
  }catch(e){res.status(400).json({error:'SMTP test failed: '+String(e.message||'connection error').slice(0,180)})}
 })

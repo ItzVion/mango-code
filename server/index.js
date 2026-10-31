@@ -6,6 +6,7 @@ import { exercisesRouter } from './routes/exercises.js'
 import { authRouter } from './routes/auth.js'
 import { bugreportRouter } from './routes/bugreport.js'
 import { adminRouter } from './routes/admin.js'
+import { adminRouter } from './routes/admin.js'
 import { db } from './db.js'
 import { checkRateLimit, clientIp } from './rateLimit.js'
 

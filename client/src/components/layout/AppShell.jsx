@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Sidebar, NAV } from './Sidebar'
 import { Topbar } from './Topbar'
@@ -7,6 +7,10 @@ import BugReportButton from '../BugReportButton'
 import { setAccount } from '../../lib/user'
 
 export function AppShell({ children }) {
+  const [maintenance,setMaintenance] = useState(false)
+  useEffect(() => {
+    fetch('/api/status',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(d=>setMaintenance(Boolean(d?.maintenanceMode))).catch(()=>{})
+  },[])
   useEffect(() => {
     let active = true
     fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
@@ -24,7 +28,7 @@ export function AppShell({ children }) {
       <Sidebar />
       <div className="flex min-h-screen flex-col md:pl-64">
         <Topbar />
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-24 pt-6 sm:px-6 md:px-8 md:pb-12">{children}</main>
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-24 pt-6 sm:px-6 md:px-8 md:pb-12">{maintenance && <div role="status" className="mb-5 rounded-xl border border-mango/40 bg-mango/10 px-4 py-3 text-sm font-medium text-ink">MangoCode is in maintenance mode. Some learning and account services are temporarily paused.</div>}{children}</main>
         <Footer />
       </div>
       <nav className="fixed inset-x-0 bottom-0 z-40 flex gap-1 overflow-x-auto border-t border-ink/10 bg-card px-2 py-2 md:hidden">

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 const SUPPORT_EMAIL = String(import.meta.env.VITE_SUPPORT_EMAIL || '').trim()
@@ -8,11 +9,13 @@ function SupportContact() {
     : <span className="font-semibold">A support email has not been published for this deployment yet.</span>
 }
 
-function LegalLayout({ label, title, updated, children }) {
+function LegalLayout({ label, title, updated, slug, children }) {
+  const [override, setOverride] = useState(null)
+  useEffect(() => { let active=true; fetch('/api/legal/'+slug,{cache:'no-store'}).then(r=>r.ok?r.json():null).then(d=>{if(active&&d?.content)setOverride(d.content)}).catch(()=>{}); return ()=>{active=false} },[slug])
   return <main className="mx-auto max-w-4xl space-y-6 pb-12">
     <p className="text-xs font-bold uppercase tracking-widest text-mango-deep">{label}</p>
     <header className="border-b border-ink/10 pb-5"><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1><p className="mt-2 text-xs text-ink-soft">Last updated: {updated}</p></header>
-    <article className="space-y-6 rounded-xl border border-ink/10 bg-card p-5 text-sm leading-7 text-ink-soft sm:p-8">{children}</article>
+    <article className="space-y-6 rounded-xl border border-ink/10 bg-card p-5 text-sm leading-7 text-ink-soft sm:p-8">{override !== null ? <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7 text-ink-soft">{override}</pre> : children}</article>
     <p className="text-xs text-ink-soft">Questions or requests: <SupportContact /></p>
     <div className="flex flex-wrap gap-4 text-xs font-semibold"><Link to="/about" className="underline">About MangoCode</Link><Link to="/privacy" className="underline">Privacy</Link><Link to="/terms" className="underline">Terms</Link><Link to="/third-party-notice" className="underline">Third-party services</Link></div>
   </main>
@@ -23,7 +26,7 @@ function Section({ title, children }) {
 }
 
 export function AboutPage() {
-  return <LegalLayout label="ABOUT" title="About MangoCode" updated="November 1, 2026">
+  return <LegalLayout label="ABOUT" title="About MangoCode" updated="November 1, 2026" slug="about">
     <p className="text-base text-ink">MangoCode is a self-paced programming learning site built around understanding concepts and practising them with code.</p>
     <Section title="What you can learn"><p>Learning paths cover HTML and CSS, JavaScript, Python, C, and C++. Each path is organised from beginner foundations through more advanced topics, with worked examples, quick checks, practical exercises and checkpoint assessments.</p></Section>
     <Section title="How the lessons work"><p>Lessons introduce an idea in plain language, show an example, highlight what matters, and give you a chance to write and run code. Signed-in learners can keep completed lessons, practical attempts and assessment scores in their account.</p></Section>
@@ -33,7 +36,7 @@ export function AboutPage() {
 }
 
 export function PrivacyPage() {
-  return <LegalLayout label="LEGAL" title="Privacy Policy" updated="November 1, 2026">
+  return <LegalLayout label="LEGAL" title="Privacy Policy" updated="November 1, 2026" slug="privacy">
     <p className="text-base text-ink">This policy explains what information MangoCode processes when you use its lessons, accounts, code exercises and support features.</p>
     <Section title="Information we process"><ul className="list-disc space-y-2 pl-5">
       <li><strong className="text-ink">Account information:</strong> name, email address, password hash, Google account subject identifier (when Google sign-in is used), account role and account timestamps.</li>
@@ -54,7 +57,7 @@ export function PrivacyPage() {
 }
 
 export function TermsPage() {
-  return <LegalLayout label="LEGAL" title="Terms of Service" updated="November 1, 2026">
+  return <LegalLayout label="LEGAL" title="Terms of Service" updated="November 1, 2026" slug="terms">
     <p className="text-base text-ink">By using MangoCode, you agree to use the service responsibly and follow these terms.</p>
     <Section title="The service"><p>MangoCode provides self-paced programming lessons, worked examples, quizzes, checkpoint assessments and code-execution practicals. Content is educational and may contain mistakes or omissions. It is not a guarantee of a particular learning outcome or qualification.</p></Section>
     <Section title="Accounts"><p>You are responsible for keeping your sign-in details private and for activity carried out through your account. Provide an email address you control so you can complete verification and password recovery. Do not impersonate another person or attempt to access another user's account or results.</p></Section>

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { optionalAuth } from '../middleware/auth.js'
 import { checkRateLimit, clientIp } from '../rateLimit.js'
 import { db } from '../db.js'
+import { db } from '../db.js'
 
 export const bugreportRouter = Router()
 
@@ -31,8 +32,11 @@ bugreportRouter.post('/', optionalAuth, async (req, res, next) => {
   const saved = await db.execute({ sql: 'INSERT INTO bug_reports (user_id, category, page, description) VALUES (?, ?, ?, ?) RETURNING id', args: [req.userId || null, category || 'Bug', page, description] })
   const reportId = saved.rows[0]?.id
 
+  const saved = await db.execute({ sql: 'INSERT INTO bug_reports (user_id, category, page, description) VALUES (?, ?, ?, ?) RETURNING id', args: [req.userId || null, category || 'Bug', page, description] })
+  const reportId = saved.rows[0]?.id
+
   const webhook = getWebhookUrl()
-  if (!webhook) return res.status(503).json({ error: 'Bug reporting is not configured yet.' })
+  if (!webhook) return res.json({ success: true, reportId, delivered: false })
 
   const payload = {
     username: 'MangoCode Bug Reports',
