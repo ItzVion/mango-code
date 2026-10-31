@@ -27,6 +27,7 @@ function publicUser(user) {
     id: user.id, email: user.email, name: user.name,
     role: user.role || 'USER', isOwner: user.role === 'OWNER',
     emailVerified: Boolean(user.email_verified_at),
+    hasDonated: Boolean(user.has_donated),
   }
 }
 
@@ -119,7 +120,7 @@ async function applyOwnerRole(user) {
 
 async function findUserByEmail(email) {
   const result = await db.execute({
-    sql: 'SELECT id, email, name, password_hash, google_sub, role, email_verified_at FROM users WHERE email = ? LIMIT 1',
+    sql: 'SELECT id, email, name, password_hash, google_sub, role, email_verified_at, has_donated FROM users WHERE email = ? LIMIT 1',
     args: [email],
   })
   return result.rows[0] || null
@@ -290,7 +291,7 @@ authRouter.post('/google', async (req, res, next) => {
 
     const email = normalizeEmail(claims.email)
     if (!EMAIL_RE.test(email)) return res.status(401).json({ error: 'Google did not return a valid email address.' })
-    const byGoogle = await db.execute({ sql: 'SELECT id, email, name, role, email_verified_at FROM users WHERE google_sub = ? LIMIT 1', args: [claims.sub] })
+    const byGoogle = await db.execute({ sql: 'SELECT id, email, name, role, email_verified_at, has_donated FROM users WHERE google_sub = ? LIMIT 1', args: [claims.sub] })
     let user = byGoogle.rows[0]
     if (!user) {
       const byEmail = await findUserByEmail(email)
@@ -299,7 +300,7 @@ authRouter.post('/google', async (req, res, next) => {
         const googleIsAuthoritative = email.endsWith('@gmail.com') || Boolean(claims.hd)
         if (!googleIsAuthoritative) return res.status(409).json({ error: 'This email already has an account. Sign in with its password first, then contact support to link Google.' })
         const linked = await db.execute({
-          sql: 'UPDATE users SET google_sub = ?, email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP) WHERE id = ? RETURNING id, email, name, role, email_verified_at',
+          sql: 'UPDATE users SET google_sub = ?, email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP) WHERE id = ? RETURNING id, email, name, role, email_verified_at, has_donated',
           args: [claims.sub, byEmail.id],
         })
         user = linked.rows[0]
