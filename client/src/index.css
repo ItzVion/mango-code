@@ -1,23 +1,22 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-display: "DM Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "DM Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
+  --font-body: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   --color-ink: #18201c;
   --color-ink-soft: #59635e;
-  --color-paper: #f7f8f5;
-  --color-paper-dim: #edf0e9;
-  --color-mango: #efad32;
-  --color-mango-deep: #b87912;
+  --color-paper: #ffffff;
+  --color-paper-dim: #f3f4f2;
+  --color-mango: #f5a623;
+  --color-mango-deep: #a96508;
   --color-ember: #ce6543;
   --color-leaf: #287a51;
   --color-rose: #b94d57;
-  --color-card: #ffffff;
+  --color-card: #f7f7f7;
 }
 
-:root { color-scheme: light; }
+:root { color-scheme: light; }\nhtml, body, #root { min-height: 100%; }
 html { scroll-behavior: auto; }
 body {
   margin: 0;
