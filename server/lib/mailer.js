@@ -1,4 +1,6 @@
 import nodemailer from 'nodemailer'
+import crypto from 'node:crypto'
+import { db } from '../db.js'
 
 function required(name, value) {
   if (!value) throw new Error(name + ' is not configured.')
@@ -11,25 +13,49 @@ function escapeHtml(value) {
   })
 }
 
-function transporterConfig() {
-  const host = required('SMTP_HOST', process.env.SMTP_HOST)
-  const user = required('SMTP_USER', process.env.SMTP_USER)
-  const pass = required('SMTP_PASS', process.env.SMTP_PASS)
-  const from = process.env.SMTP_FROM || user
-  const port = Number(process.env.SMTP_PORT || 587)
+async function transporterConfig() {
+  const stored = await db.execute({ sql: "SELECT value FROM admin_settings WHERE key = 'smtp_config'" })
+  const encrypted = stored.rows[0]?.value
+  let config
+  if (encrypted) {
+    const secret = String(process.env.SESSION_SECRET || '')
+    if (secret.length < 32) throw new Error('SESSION_SECRET must contain at least 32 characters to decrypt SMTP settings.')
+    const parts = String(encrypted).split('.')
+    if (parts.length !== 3 || parts.some(part => !part)) throw new Error('Stored SMTP credentials are invalid.')
+    const [iv, tag, data] = parts
+    const decipher = crypto.createDecipheriv('aes-256-gcm', crypto.createHash('sha256').update(secret).digest(), Buffer.from(iv, 'base64url'))
+    decipher.setAuthTag(Buffer.from(tag, 'base64url'))
+    const decoded = Buffer.concat([decipher.update(Buffer.from(data, 'base64url')), decipher.final()]).toString('utf8')
+    config = JSON.parse(decoded)
+  } else {
+    config = {
+      host: process.env.SMTP_HOST,
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+      from: process.env.SMTP_FROM,
+      port: process.env.SMTP_PORT,
+      secure: process.env.SMTP_SECURE,
+    }
+  }
+  const host = required('SMTP_HOST', config.host)
+  const user = required('SMTP_USER', config.user)
+  const pass = required('SMTP_PASS', config.pass)
+  const port = Number(config.port || 587)
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('SMTP_PORT must be a valid TCP port.')
-  const secure = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' || port === 465
+  const secure = typeof config.secure === 'boolean'
+    ? config.secure
+    : String(config.secure || '').toLowerCase() === 'true' || port === 465
+  const fromAddress = config.from || user
   return {
     transporter: nodemailer.createTransport({
       host, port, secure, auth: { user, pass },
       connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 10000,
     }),
     from: process.env.SMTP_FROM_NAME
-      ? '"' + String(process.env.SMTP_FROM_NAME).replace(/["\r\n]/g, '') + '" <' + from + '>'
-      : from,
+      ? '"' + String(process.env.SMTP_FROM_NAME).replace(/["\\r\\n]/g, '') + '" <' + fromAddress + '>'
+      : fromAddress,
   }
 }
-
 function emailShell(title, content) {
   return '<!doctype html><html><body style="margin:0;padding:28px 14px;background:#f5f6f3;font-family:Arial,sans-serif;color:#18201c">' +
     '<main style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #e4e7e1;border-radius:16px;overflow:hidden">' +
@@ -41,7 +67,7 @@ function emailShell(title, content) {
 }
 
 export async function sendCodeEmail(email, code, purpose = 'verification') {
-  const config = transporterConfig()
+  const config = await transporterConfig()
   const reset = purpose === 'password_reset'
   const title = reset ? 'Reset your password' : 'Verify your email address'
   const intro = reset
@@ -59,7 +85,7 @@ export async function sendCodeEmail(email, code, purpose = 'verification') {
 }
 
 export async function sendAccountExistsEmail(email) {
-  const config = transporterConfig()
+  const config = await transporterConfig()
   await config.transporter.sendMail({
     from: config.from,
     to: email,
