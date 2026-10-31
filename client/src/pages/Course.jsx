@@ -1,80 +1,95 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { motion } from 'motion/react'
-import { ChevronRight, ClipboardCheck, LockKeyhole, CheckCircle2 } from 'lucide-react'
-import { AnimatedGroup } from '../components/motion/AnimatedGroup'
+import { ChevronRight, ClipboardCheck, LockKeyhole, CheckCircle2, BookOpen, Code2 } from 'lucide-react'
 import { apiHeaders } from '../lib/user'
 
 const groups = [
-  ['easy', 'Easy'],
-  ['medium', 'Medium'],
-  ['hard', 'Hard'],
-  ['final', 'Final Assessment'],
+  { id: 'easy', title: 'Beginner foundations', description: 'Learn the syntax and the building blocks.' },
+  { id: 'medium', title: 'Core programming', description: 'Combine concepts and start building useful features.' },
+  { id: 'hard', title: 'Advanced topics & projects', description: 'Apply what you know in larger, more realistic programs.' },
+  { id: 'final', title: 'Final assessment', description: 'Bring the whole course together.' },
 ]
 
 export default function Course() {
   const { id } = useParams()
   const [course, setCourse] = useState(null)
   const [lessons, setLessons] = useState(null)
+  const [error, setError] = useState(false)
 
-  function load() {
+  useEffect(() => {
+    let active = true
+    setCourse(null); setLessons(null); setError(false)
     Promise.all([
-      fetch('/api/courses').then((res) => res.json()),
-      fetch(`/api/courses/${id}/lessons`, { headers: apiHeaders() }).then((res) => res.json()),
+      fetch('/api/courses').then(async res => { if (!res.ok) throw new Error(); return res.json() }),
+      fetch(`/api/courses/${id}/lessons`, { headers: apiHeaders() }).then(async res => { if (!res.ok) throw new Error(); return res.json() }),
     ]).then(([all, units]) => {
-      setCourse(all.find((c) => c.id === id) ?? null)
+      if (!active) return
+      setCourse(all.find(c => c.id === id) ?? null)
       setLessons(units)
-    }).catch(() => setLessons([]))
-  }
+    }).catch(() => { if (active) { setLessons([]); setError(true) } })
+    return () => { active = false }
+  }, [id])
 
-  useEffect(() => { load() }, [id])
+  const grouped = useMemo(() => {
+    if (!lessons) return []
+    return groups.map(group => {
+      const items = lessons.filter(unit => group.id === 'final'
+        ? unit.unit_type === 'final'
+        : unit.level === group.id && unit.unit_type !== 'final')
+      return { ...group, items }
+    }).filter(group => group.items.length)
+  }, [lessons])
 
-  if (course === null && lessons === null) return <p className="pt-8 text-ink-soft">Loading…</p>
-  if (course === null && lessons !== null) return <p className="pt-8">Course not found.</p>
+  if (!lessons && !error) return <p className="py-8 text-sm text-ink-soft">Loading course…</p>
+  if (!course || error) return <div className="rounded-lg border border-rose/30 p-4 text-sm text-rose">This course could not be loaded. Please refresh the page.</div>
+
+  const lessonCount = lessons.filter(unit => unit.unit_type === 'lesson').length
+  const completedCount = lessons.filter(unit => unit.completed).length
 
   return (
-    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="pt-8 max-w-2xl pb-16">
-      <Link to="/" className="text-sm text-ink-soft hover:text-ink">&larr; Back to dashboard</Link>
-      <h2 className="mt-3 text-2xl font-semibold">{course?.name}</h2>
-      <p className="mt-1 text-sm text-ink-soft">30 lessons · 3 difficulty tests · final assessment</p>
+    <div className="max-w-4xl space-y-7 pb-10">
+      <div><Link to="/" className="text-sm text-ink-soft hover:text-ink">← All courses</Link></div>
+      <header className="border-b border-ink/10 pb-6">
+        <div className="flex items-center gap-2 text-sm font-semibold"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: course.color }}/>{course.name}</div>
+        <h2 className="mt-3 text-3xl font-bold tracking-tight">Your learning path</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-soft">Work through the lessons in order. Each checkpoint unlocks the next section, and the later lessons turn the fundamentals into practical work.</p>
+        <div className="mt-5 flex flex-wrap gap-5 text-sm text-ink-soft">
+          <span className="inline-flex items-center gap-2"><BookOpen size={16}/>{lessonCount} lessons</span>
+          <span className="inline-flex items-center gap-2"><ClipboardCheck size={16}/>3 checkpoints + final</span>
+          <span>{completedCount} completed</span>
+        </div>
+      </header>
 
-      {lessons && groups.map(([level, label]) => {
-        const items = lessons.filter((lesson) => {
-          if (level === 'final') return lesson.unit_type === 'final' && lesson.id === `${id}-final`
-          return lesson.level === level && lesson.id.startsWith(`${id}-${level}-`)
-        })
-        if (!items.length) return null
-        return (
-          <section key={level} className="mt-7">
-            <div className="mb-3 flex items-center gap-2">
-              {level === 'final' ? <ClipboardCheck size={17} /> : <span className="text-sm font-semibold">{label}</span>}
-              {level !== 'final' && <span className="text-xs text-ink-soft">10 lessons + test</span>}
+      <div className="space-y-8">
+        {grouped.map(group => (
+          <section key={group.id}>
+            <div className="mb-3">
+              <h3 className="text-lg font-bold">{group.title}</h3>
+              <p className="mt-1 text-sm text-ink-soft">{group.description}</p>
             </div>
-            <AnimatedGroup className="flex flex-col gap-2">
-              {items.map((unit, i) => {
-                const isTest = unit.unit_type !== 'lesson'
+            <div className="overflow-hidden rounded-xl border border-ink/10 bg-card">
+              {group.items.map((unit, index) => {
+                const checkpoint = unit.unit_type !== 'lesson'
                 const locked = !unit.unlocked
+                const to = locked ? '#' : `/lesson/${unit.id}`
                 return (
-                  <Link key={unit.id} to={locked ? '#' : `/lesson/${unit.id}`} onClick={(e) => locked && e.preventDefault()} aria-disabled={locked}>
-                    <div className={`flex items-center justify-between rounded-2xl border px-4 py-3.5 transition-colors ${locked ? 'border-ink/5 bg-ink/[0.02] opacity-55' : 'border-ink/5 bg-card hover:border-ink/15'}`}>
-                      <div className="flex items-center gap-3">
-                        <span className={`grid h-7 w-7 place-items-center rounded-full text-xs font-semibold ${locked ? 'bg-ink/10 text-ink-soft' : 'text-white'}`} style={!locked ? { backgroundColor: course?.color } : undefined}>
-                          {locked ? <LockKeyhole size={13} /> : unit.completed ? <CheckCircle2 size={15} /> : isTest ? '✓' : i + 1}
-                        </span>
-                        <div>
-                          <span className="text-sm font-medium">{unit.title}</span>
-                          {locked && <p className="text-xs text-ink-soft">Complete the previous checkpoint first</p>}
-                        </div>
-                      </div>
-                      {!locked && <ChevronRight size={16} className="text-ink-soft" />}
-                    </div>
+                  <Link key={unit.id} to={to} onClick={event => locked && event.preventDefault()} aria-disabled={locked}
+                    className={`flex items-center gap-3 border-b border-ink/10 px-4 py-3.5 last:border-b-0 ${locked ? 'cursor-not-allowed bg-paper/50 text-ink-soft' : 'hover:bg-paper'}`}>
+                    <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-semibold ${locked ? 'bg-paper-dim text-ink-soft' : unit.completed ? 'bg-leaf/10 text-leaf' : 'bg-ink text-paper'}`}>
+                      {locked ? <LockKeyhole size={14}/> : unit.completed ? <CheckCircle2 size={16}/> : checkpoint ? <ClipboardCheck size={15}/> : <span>{index + 1}</span>}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold">{unit.title}</span>
+                      <span className="mt-0.5 block text-xs text-ink-soft">{locked ? 'Complete the previous checkpoint to unlock this unit' : checkpoint ? 'Assessment · pass to continue' : 'Lesson · explanation, example and practical'}</span>
+                    </span>
+                    {!locked && <ChevronRight size={17} className="shrink-0 text-ink-soft"/>}
                   </Link>
                 )
               })}
-            </AnimatedGroup>
+            </div>
           </section>
-        )
-      })}
-    </motion.div>
+        ))}
+      </div>
+    </div>
   )
 }
