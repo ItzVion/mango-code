@@ -4,15 +4,23 @@ import { Sidebar, NAV } from './Sidebar'
 import { Topbar } from './Topbar'
 import { Footer } from './Footer'
 import BugReportButton from '../BugReportButton'
-import { setAccount } from '../../lib/user'
+import { getAccount, setAccount } from '../../lib/user'
+import { ShieldCheck } from 'lucide-react'
 
 export function AppShell({ children }) {
   const [maintenance,setMaintenance] = useState(false)
+  const [account,setCurrentAccount] = useState(getAccount())
   const [sidebarCollapsed,setSidebarCollapsed] = useState(() => { try { return window.localStorage.getItem('mangocode-sidebar-collapsed') === 'true' } catch { return false } })
   useEffect(() => { try { window.localStorage.setItem('mangocode-sidebar-collapsed', String(sidebarCollapsed)) } catch {} }, [sidebarCollapsed])
   useEffect(() => {
     fetch('/api/status',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(d=>setMaintenance(Boolean(d?.maintenanceMode))).catch(()=>{})
   },[])
+  useEffect(() => {
+    const sync = () => setCurrentAccount(getAccount())
+    window.addEventListener('mangocode-auth-change', sync)
+    return () => window.removeEventListener('mangocode-auth-change', sync)
+  }, [])
+
   useEffect(() => {
     let active = true
     fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
@@ -20,7 +28,7 @@ export function AppShell({ children }) {
         if (!response.ok) throw new Error('Session unavailable')
         return response.json()
       })
-      .then(data => { if (active) setAccount(data.user || null) })
+      .then(data => { if (active) { setAccount(data.user || null); setCurrentAccount(data.user || null) } })
       .catch(() => {})
     return () => { active = false }
   }, [])
@@ -40,6 +48,7 @@ export function AppShell({ children }) {
             <Icon size={17}/><span>{label}</span>
           </NavLink>
         ))}
+        {account?.isOwner && <NavLink to="/admin" className={({ isActive }) => 'flex min-w-[72px] flex-1 flex-col items-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium ' + (isActive ? 'bg-ink text-paper' : 'text-ink-soft')}><ShieldCheck size={17}/><span>Admin</span></NavLink>}
       </nav>
       <BugReportButton />
     </div>
