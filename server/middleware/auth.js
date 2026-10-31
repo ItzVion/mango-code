@@ -21,7 +21,7 @@ export async function getCurrentUser(req) {
   const token = parseCookies(req.headers.cookie)[SESSION_COOKIE]
   if (!token || token.length < 32 || token.length > 256) return null
   const result = await db.execute({
-    sql: 'SELECT u.id, u.email, u.name, u.role, u.email_verified_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > CURRENT_TIMESTAMP LIMIT 1',
+    sql: 'SELECT u.id, u.email, u.name, u.role, u.email_verified_at, u.has_donated FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > CURRENT_TIMESTAMP LIMIT 1',
     args: [sessionHash(token)],
   })
   const user = result.rows[0]
