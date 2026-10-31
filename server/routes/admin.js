@@ -185,7 +185,7 @@ adminRouter.post('/smtp/test',async(req,res,next)=>{
   res.json({success:true})
  }catch(e){res.status(400).json({error:'SMTP test failed: '+String(e.message||'connection error').slice(0,180)})}
 })
-const legalDefaults={privacy:'# Privacy Policy\n\nMangoCode stores account details and learning progress to provide its services. Contact support for privacy requests.',terms:'# Terms of Service\n\nUse MangoCode lawfully and do not misuse its code execution or learning services.',about:'# About MangoCode\n\nMangoCode helps learners understand programming through practical lessons.'}
+const legalDefaults={refund:'# Refund Policy\n\nMangoCode contributions are voluntary. For duplicate or incorrectly processed payments, contact support with the provider transaction reference. UPI claims are checked against the exact amount and UTR before supporter status is granted.',privacy:'# Privacy Policy\n\nMangoCode stores account details and learning progress to provide its services. Contact support for privacy requests.',terms:'# Terms of Service\n\nUse MangoCode lawfully and do not misuse its code execution or learning services.',about:'# About MangoCode\n\nMangoCode helps learners understand programming through practical lessons.'}
 adminRouter.get('/legal/:slug',async(req,res,next)=>{
  try {if(!legalDefaults[req.params.slug])return res.status(404).json({error:'Unknown page.'});const r=await db.execute({sql:'SELECT content,updated_at FROM legal_pages WHERE slug=?',args:[req.params.slug]});res.json({slug:req.params.slug,content:r.rows[0]?.content??legalDefaults[req.params.slug],updatedAt:r.rows[0]?.updated_at||null})}catch(e){next(e)}
 })
