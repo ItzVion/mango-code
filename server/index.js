@@ -6,6 +6,7 @@ import { exercisesRouter } from './routes/exercises.js'
 import { authRouter } from './routes/auth.js'
 import { bugreportRouter } from './routes/bugreport.js'
 import { adminRouter } from './routes/admin.js'
+import { donationsRouter } from './routes/donations.js'
 import { db } from './db.js'
 import { checkRateLimit, clientIp } from './rateLimit.js'
 
@@ -126,10 +127,11 @@ app.get('/api/status', async (_req, res, next) => {
   } catch (error) { next(error) }
 })
 app.use('/api', async (req, res, next) => {
-  if (req.path.startsWith('/auth') || req.path.startsWith('/admin') || req.path.startsWith('/legal/') || req.path.startsWith('/bugreport') || req.path === '/status' || req.path === '/health') return next()
+  if (req.path.startsWith('/auth') || req.path.startsWith('/admin') || req.path.startsWith('/legal/') || req.path.startsWith('/bugreport') || req.path.startsWith('/donations') || req.path === '/status' || req.path === '/health') return next()
   try { const result = await db.execute({ sql: "SELECT value FROM admin_settings WHERE key = 'maintenance_mode'" }); if (result.rows[0]?.value === 'true') return res.status(503).json({ error: 'MangoCode is temporarily in maintenance mode. Please check back shortly.' }); next() } catch (error) { next(error) }
 })
 app.use('/api/bugreport', bugreportRouter)
+app.use('/api/donations', donationsRouter)
 app.use('/api', lessonsRouter)
 app.use('/api/exercises', exercisesRouter)
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
