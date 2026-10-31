@@ -1,11 +1,36 @@
-node_modules
-dist
+# Dependencies and generated builds
+node_modules/
+dist/
+coverage/
+.cache/
+.vite/
+.vercel/
+
+# Local environment files; keep sample templates tracked
 .env
 .env.*
 !.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Local databases, logs and caches
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
 *.log
+
+# Private keys and certificates
 *.pem
 *.key
 *.p12
 *.pfx
+*.crt
+
+# OS and editor files
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
