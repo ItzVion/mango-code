@@ -6,7 +6,8 @@ import Lesson from './pages/Lesson'
 import Auth from './pages/Auth'
 import History from './pages/History'
 import Admin from './pages/Admin'
-import { AboutPage, PrivacyPage, TermsPage, ThirdPartyNoticePage } from './pages/LegalPages'
+import Donate from './pages/Donate'
+import { AboutPage, PrivacyPage, TermsPage, RefundPage, ThirdPartyNoticePage } from './pages/LegalPages'
 
 export default function App() {
   return (
@@ -17,10 +18,13 @@ export default function App() {
         <Route path="/lesson/:id" element={<Lesson />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/results" element={<History />} />
+        <Route path="/donations" element={<Donate />} />
+        <Route path="/donate" element={<Navigate to="/donations" replace />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/refund" element={<RefundPage />} />
         <Route path="/third-party-notice" element={<ThirdPartyNoticePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
