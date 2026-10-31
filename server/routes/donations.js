@@ -31,6 +31,7 @@ async function razorpayConfig() {
   return { keyId, keySecret: encryptedSecret ? decryptSecret(encryptedSecret) : '' }
 }
 function safeAmount(value) {
+  if (typeof value !== 'number' && !(typeof value === 'string' && /^\\d+$/.test(value))) return null
   const amount = Number(value)
   return Number.isSafeInteger(amount) && amount >= 1 && amount <= MAX_AMOUNT_RUPEES ? amount : null
 }
