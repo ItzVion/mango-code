@@ -1,62 +1,81 @@
-import { useEffect, useState } from 'react'
-import { motion } from 'motion/react'
-import { ArrowRight, BookOpen, Layers } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { BookOpen, Code2, ArrowRight, ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { TextEffect } from '../components/motion/TextEffect'
-import { AnimatedGroup } from '../components/motion/AnimatedGroup'
-import { AnimatedCounter } from '../components/motion/AnimatedCounter'
-import { TiltCard } from '../components/motion/TiltCard'
 import { apiHeaders } from '../lib/user'
 
 export default function Dashboard() {
   const [courses, setCourses] = useState(null)
-  const [firstLessons, setFirstLessons] = useState({})
+  const [lessonGroups, setLessonGroups] = useState({})
+  const [error, setError] = useState(false)
 
   useEffect(() => {
+    let active = true
     fetch('/api/courses')
-      .then((res) => res.json())
+      .then(async (res) => { if (!res.ok) throw new Error('Could not load courses'); return res.json() })
       .then(async (list) => {
+        if (!active) return
         setCourses(list)
-        const entries = await Promise.all(list.map(async (c) => {
-          const res = await fetch(`/api/courses/${c.id}/lessons`, { headers: apiHeaders() })
-          return [c.id, await res.json()]
+        const entries = await Promise.all(list.map(async (course) => {
+          const response = await fetch(`/api/courses/${course.id}/lessons`, { headers: apiHeaders() })
+          if (!response.ok) throw new Error('Could not load course lessons')
+          return [course.id, await response.json()]
         }))
-        setFirstLessons(Object.fromEntries(entries))
+        if (active) setLessonGroups(Object.fromEntries(entries))
       })
+      .catch(() => { if (active) setError(true) })
+    return () => { active = false }
   }, [])
 
-  const totalLessons = Object.values(firstLessons).reduce((sum, units) => sum + units.filter((u) => u.unit_type === 'lesson').length, 0)
-  const heroCourse = courses?.[0]
-  const heroLesson = heroCourse ? firstLessons[heroCourse.id]?.find((u) => u.unit_type === 'lesson' && u.unlocked) : null
+  const summary = useMemo(() => (courses || []).map(course => {
+    const lessons = (lessonGroups[course.id] || []).filter(unit => unit.unit_type === 'lesson')
+    const first = lessons.find(unit => unit.unlocked) || lessons[0]
+    return { ...course, lessons, first }
+  }), [courses, lessonGroups])
+  const totalLessons = summary.reduce((sum, course) => sum + course.lessons.length, 0)
 
   return (
-    <div className="flex flex-col gap-8 pt-2">
-      <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }} className="relative overflow-hidden rounded-3xl bg-ink px-6 py-8 text-paper md:px-10 md:py-10">
-        <motion.div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-mango/30 blur-3xl" animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.8, 0.5] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }} />
-        <motion.div className="pointer-events-none absolute -bottom-20 left-1/3 h-56 w-56 rounded-full bg-ember/25 blur-3xl" animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.7, 0.4] }} transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 1 }} />
-        <div className="relative flex flex-col gap-4 md:max-w-xl">
-          <span className="w-fit rounded-full bg-paper/10 px-3 py-1 text-xs font-medium text-mango">Start learning</span>
-          <TextEffect as="h2" className="text-3xl font-semibold leading-tight md:text-4xl">{heroCourse ? `Start with ${heroCourse.name}` : 'Loading your courses…'}</TextEffect>
-          <p className="text-paper/70">Read the lesson, practise the concept, then pass the checkpoint to unlock the next section.</p>
-          {heroLesson && <Link to={`/lesson/${heroLesson.id}`}><motion.button whileHover={{ x: 4 }} whileTap={{ scale: 0.97 }} className="mt-2 inline-flex w-fit items-center gap-2 rounded-full bg-mango px-5 py-2.5 text-sm font-semibold text-ink">Start "{heroLesson.title}" <ArrowRight size={16} /></motion.button></Link>}
+    <div className="space-y-8">
+      <section className="border-b border-ink/10 pb-7 pt-2">
+        <p className="text-sm font-semibold text-mango-deep">MANGOCODE · LEARNING PATHS</p>
+        <h2 className="mt-2 max-w-3xl text-3xl font-bold tracking-tight sm:text-4xl">Learn programming by understanding it, then building with it.</h2>
+        <p className="mt-3 max-w-2xl text-base leading-7 text-ink-soft">Start from the fundamentals. Follow clear explanations and worked examples, practise each idea in code, and finish with projects that bring everything together.</p>
+        <div className="mt-5 flex flex-wrap gap-5 text-sm text-ink-soft">
+          <span className="inline-flex items-center gap-2"><BookOpen size={16}/>{courses ? `${totalLessons} lessons` : 'Loading curriculum'}</span>
+          <span className="inline-flex items-center gap-2"><Code2 size={16}/>Hands-on exercises</span>
         </div>
-      </motion.section>
+      </section>
 
-      {courses && <AnimatedGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <TiltCard className="p-5"><div className="mb-3 grid h-10 w-10 place-items-center rounded-xl bg-ink/5 text-mango-deep"><Layers size={18} /></div><p className="font-display text-3xl font-semibold"><AnimatedCounter value={courses.length} /></p><p className="text-sm text-ink-soft">Courses</p></TiltCard>
-        <TiltCard className="p-5"><div className="mb-3 grid h-10 w-10 place-items-center rounded-xl bg-ink/5 text-leaf"><BookOpen size={18} /></div><p className="font-display text-3xl font-semibold"><AnimatedCounter value={totalLessons} /></p><p className="text-sm text-ink-soft">Lessons live</p></TiltCard>
-      </AnimatedGroup>}
+      {error && <div role="alert" className="rounded-lg border border-rose/30 bg-rose/5 p-4 text-sm text-rose">Courses could not be loaded. Check your connection and refresh the page.</div>}
+      {!courses && !error && <p className="py-5 text-sm text-ink-soft">Loading courses…</p>}
 
-      <section>
-        <h3 className="mb-4 text-lg font-semibold">Your courses</h3>
-        {!courses && <p className="text-sm text-ink-soft">Loading…</p>}
-        {courses && <AnimatedGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {courses.map((course) => {
-            const units = firstLessons[course.id] ?? []
-            const lessons = units.filter((u) => u.unit_type === 'lesson')
-            return <Link key={course.id} to={`/course/${course.id}`}><TiltCard className="p-5 h-full"><div className="mb-4 flex items-center justify-between"><span className="rounded-lg px-2.5 py-1 text-xs font-semibold text-white" style={{ backgroundColor: course.color }}>{course.name}</span><span className="text-xs text-ink-soft">{lessons.length} lessons</span></div><p className="text-sm text-ink-soft">{lessons.length > 0 ? `Start with "${lessons[0].title}"` : 'Coming soon'}</p></TiltCard></Link>
-          })}
-        </AnimatedGroup>}
+      {courses && <section>
+        <div className="mb-4 flex items-end justify-between gap-3">
+          <div><h3 className="text-xl font-bold">Choose a course</h3><p className="mt-1 text-sm text-ink-soft">Every path includes lessons, checkpoints and practical work.</p></div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {summary.map((course, index) => (
+            <article key={course.id} className="flex min-h-52 flex-col rounded-xl border border-ink/10 bg-card p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-2 text-sm font-semibold"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: course.color }}/>{course.name}</span>
+                <span className="text-xs text-ink-soft">{course.lessons.length || '—'} lessons</span>
+              </div>
+              <h4 className="mt-5 text-lg font-semibold">{['Build pages and style responsive interfaces','Make websites interactive and work with data','Automate tasks and build useful programs','Understand memory and build efficient programs','Write modern applications with object-oriented tools'][index] || 'Learn programming step by step'}</h4>
+              <p className="mt-2 text-sm leading-6 text-ink-soft">{course.first ? `Begin with: ${course.first.title}` : 'Explore the learning path and its practical checkpoints.'}</p>
+              <div className="mt-auto pt-5">
+                <Link to={`/course/${course.id}`} className="inline-flex items-center gap-2 text-sm font-semibold text-ink hover:text-mango-deep">View learning path <ArrowRight size={16}/></Link>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>}
+
+      <section className="rounded-xl border border-ink/10 bg-paper-dim p-5 sm:p-6">
+        <h3 className="font-semibold">How learning works</h3>
+        <div className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
+          <div><p className="font-semibold">01 · Understand</p><p className="mt-1 leading-6 text-ink-soft">Learn what a concept means and when to use it.</p></div>
+          <div><p className="font-semibold">02 · Work through an example</p><p className="mt-1 leading-6 text-ink-soft">Read code with line-by-line explanations and output.</p></div>
+          <div><p className="font-semibold">03 · Build something</p><p className="mt-1 leading-6 text-ink-soft">Write code, run it, fix mistakes and check your understanding.</p></div>
+        </div>
       </section>
     </div>
   )
