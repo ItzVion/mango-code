@@ -107,6 +107,21 @@ app.use('/api/quiz/check', async (req, res, next) => {
 
 app.use('/api/auth', authRouter)
 app.use('/api/admin', adminRouter)
+app.get('/api/legal/:slug', async (req, res, next) => {
+  try {
+    if (!['about','privacy','terms'].includes(req.params.slug)) return res.status(404).json({ error: 'Unknown page.' })
+    const result = await db.execute({ sql: 'SELECT content, updated_at FROM legal_pages WHERE slug = ?', args: [req.params.slug] })
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60')
+    res.json({ content: result.rows[0]?.content || null, updatedAt: result.rows[0]?.updated_at || null })
+  } catch (error) { next(error) }
+})
+app.get('/api/status', async (_req, res, next) => {
+  try { const result = await db.execute({ sql: "SELECT value FROM admin_settings WHERE key = 'maintenance_mode'" }); res.setHeader('Cache-Control','no-store'); res.json({ maintenanceMode: result.rows[0]?.value === 'true' }) } catch (error) { next(error) }
+})
+app.use('/api', async (req, res, next) => {
+  if (req.path.startsWith('/auth') || req.path.startsWith('/admin') || req.path.startsWith('/legal/') || req.path === '/status' || req.path === '/health') return next()
+  try { const result = await db.execute({ sql: "SELECT value FROM admin_settings WHERE key = 'maintenance_mode'" }); if (result.rows[0]?.value === 'true') return res.status(503).json({ error: 'MangoCode is temporarily in maintenance mode. Please check back shortly.' }); next() } catch (error) { next(error) }
+})
 app.use('/api/bugreport', bugreportRouter)
 app.use('/api', lessonsRouter)
 app.use('/api/exercises', exercisesRouter)
