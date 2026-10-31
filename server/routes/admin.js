@@ -172,14 +172,14 @@ adminRouter.put('/smtp',async(req,res,next)=>{
   const port=Number(req.body?.port||587)
   const secure=req.body?.secure===true
   if(req.body?.secure!==undefined&&typeof req.body.secure!=='boolean')return res.status(400).json({error:'Invalid SMTP security option.'})
-  if(!host||host.length>253||!user||user.length>320||/[\\r\\n]/.test(user)||!Number.isInteger(port)||port<1||port>65535||!from||from.length>254||! /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(from))return res.status(400).json({error:'Enter valid SMTP host, username, port and sender address.'})
+  if(!host||host.length>253||!user||user.length>320||/[\r\n]/.test(user)||!Number.isInteger(port)||port<1||port>65535||!from||from.length>254||! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(from))return res.status(400).json({error:'Enter valid SMTP host, username, port and sender address.'})
   try { await resolvePublicSmtpHost(host) } catch { return res.status(400).json({error:'SMTP host must resolve only to public IP addresses.'}) }
   const previous=await getSetting('smtp_config','')
   let previousConfig={}
   if(previous){try{previousConfig=JSON.parse(decrypt(previous))}catch{return res.status(500).json({error:'Saved SMTP settings cannot be decrypted. Check SESSION_SECRET.'})}}
   const providedPass=typeof req.body?.pass==='string'?req.body.pass:''
   const pass=providedPass||previousConfig.pass||''
-  if(!pass||pass.length>1024||/[\\r\\n]/.test(pass))return res.status(400).json({error:'Enter an SMTP password to configure this connection.'})
+  if(!pass||pass.length>1024||/[\r\n]/.test(pass))return res.status(400).json({error:'Enter an SMTP password to configure this connection.'})
   await setSetting('smtp_config',encrypt(JSON.stringify({host,user,pass,from,port,secure})),req.userId)
   await audit(req,'ADMIN_SMTP_UPDATE','settings')
   res.json({success:true})
