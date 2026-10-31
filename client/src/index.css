@@ -16,7 +16,8 @@
   --color-card: #f7f7f7;
 }
 
-:root { color-scheme: light; }\nhtml, body, #root { min-height: 100%; }
+:root { color-scheme: light; }
+html, body, #root { min-height: 100%; }
 html { scroll-behavior: auto; }
 body {
   margin: 0;
