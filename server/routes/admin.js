@@ -10,18 +10,25 @@ adminRouter.use(requireOwner)
 async function audit(req, action, targetType = null, targetId = null, metadata = null) {
   await db.execute({sql:'INSERT INTO admin_audit_logs (actor_user_id, action, target_type, target_id, metadata) VALUES (?, ?, ?, ?, ?)',args:[req.userId,action,targetType,targetId,metadata ? JSON.stringify(metadata) : null]})
 }
+function smtpEncryptionKey() {
+  const secret = String(process.env.SESSION_SECRET || '')
+  if (secret.length < 32) throw new Error('SESSION_SECRET must contain at least 32 characters before SMTP credentials can be stored.')
+  return crypto.createHash('sha256').update(secret).digest()
+}
 function encrypt(value) {
-  const key = crypto.createHash('sha256').update(process.env.SESSION_SECRET || '').digest()
+  const key = smtpEncryptionKey()
   const iv = crypto.randomBytes(12)
-  const cipher = crypto.createCipheriv('aes-256-gcm',key,iv)
-  const encrypted = Buffer.concat([cipher.update(value,'utf8'),cipher.final()])
-  return [iv.toString('base64url'),cipher.getAuthTag().toString('base64url'),encrypted.toString('base64url')].join('.')
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()])
+  return [iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), encrypted.toString('base64url')].join('.')
 }
 function decrypt(value) {
-  const [iv,tag,data] = String(value).split('.')
-  const decipher = crypto.createDecipheriv('aes-256-gcm',crypto.createHash('sha256').update(process.env.SESSION_SECRET || '').digest(),Buffer.from(iv,'base64url'))
-  decipher.setAuthTag(Buffer.from(tag,'base64url'))
-  return Buffer.concat([decipher.update(Buffer.from(data,'base64url')),decipher.final()]).toString('utf8')
+  const parts = String(value).split('.')
+  if (parts.length !== 3 || parts.some(part => !part)) throw new Error('Stored SMTP credentials are invalid.')
+  const [iv, tag, data] = parts
+  const decipher = crypto.createDecipheriv('aes-256-gcm', smtpEncryptionKey(), Buffer.from(iv, 'base64url'))
+  decipher.setAuthTag(Buffer.from(tag, 'base64url'))
+  return Buffer.concat([decipher.update(Buffer.from(data, 'base64url')), decipher.final()]).toString('utf8')
 }
 function hashPassword(password) {
   return new Promise((resolve,reject)=>{
@@ -99,7 +106,7 @@ adminRouter.patch('/reports/:id',async(req,res,next)=>{
 adminRouter.get('/settings',async(req,res,next)=>{
  try {
   const maintenance=await getSetting('maintenance_mode','false')
-  const support=await getSetting('support_email','')
+  const support=await getSetting('support_email',process.env.SUPPORT_EMAIL || '')
   const smtp=await getSetting('smtp_config','')
   let configured=false
   if(smtp){try{const v=JSON.parse(decrypt(smtp));configured=Boolean(v.host&&v.user&&v.pass)}catch{}}
