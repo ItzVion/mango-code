@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import crypto from 'node:crypto'
 import nodemailer from 'nodemailer'
+import { resolvePublicSmtpHost } from '../lib/smtpSecurity.js'
 import { db } from '../db.js'
 import { requireOwner } from '../middleware/auth.js'
 
@@ -64,7 +65,7 @@ adminRouter.get('/overview',async(req,res,next)=>{
 adminRouter.get('/users',async(req,res,next)=>{
  try {
   const q=String(req.query.q||'').trim().slice(0,100)
-  const r=await db.execute({sql:"SELECT u.id,u.name,u.email,u.role,u.auth_provider,u.email_verified_at,u.created_at,COALESCE(p.completed,0)::int AS completed,COALESCE(e.attempts,0)::int AS attempts FROM users u LEFT JOIN (SELECT user_id,COUNT(*) AS completed FROM progress GROUP BY user_id) p ON p.user_id=u.id LEFT JOIN (SELECT user_id,COUNT(*) AS attempts FROM exercise_attempts GROUP BY user_id) e ON e.user_id=u.id WHERE ($1='' OR u.name ILIKE '%'||$1||'%' OR u.email ILIKE '%'||$1||'%' OR u.id ILIKE '%'||$1||'%') ORDER BY u.created_at DESC LIMIT 250",args:[q]})
+  const r=await db.execute({sql:"SELECT u.id,u.name,u.email,u.role,u.auth_provider,u.email_verified_at,u.has_donated,u.created_at,COALESCE(p.completed,0)::int AS completed,COALESCE(e.attempts,0)::int AS attempts FROM users u LEFT JOIN (SELECT user_id,COUNT(*) AS completed FROM progress GROUP BY user_id) p ON p.user_id=u.id LEFT JOIN (SELECT user_id,COUNT(*) AS attempts FROM exercise_attempts GROUP BY user_id) e ON e.user_id=u.id WHERE ($1='' OR u.name ILIKE '%'||$1||'%' OR u.email ILIKE '%'||$1||'%' OR u.id ILIKE '%'||$1||'%') ORDER BY u.created_at DESC LIMIT 250",args:[q]})
   res.json(r.rows)
  } catch(e){next(e)}
 })
@@ -105,21 +106,56 @@ adminRouter.patch('/reports/:id',async(req,res,next)=>{
 })
 adminRouter.get('/settings',async(req,res,next)=>{
  try {
-  const maintenance=await getSetting('maintenance_mode','false')
-  const support=await getSetting('support_email',process.env.SUPPORT_EMAIL || '')
-  const smtp=await getSetting('smtp_config','')
-  let configured=false
-  if(smtp){try{const v=JSON.parse(decrypt(smtp));configured=Boolean(v.host&&v.user&&v.pass)}catch{}}
-  res.json({maintenanceMode:maintenance==='true',supportEmail:support,smtpConfigured:configured})
+  const keys=['maintenance_mode','support_email','smtp_config','razorpay_key_id','razorpay_key_secret','qr_mode','upi_vpa','donation_message']
+  const result=await db.execute({sql:'SELECT key,value FROM admin_settings WHERE key = ANY(?)',args:[keys]})
+  const values=Object.fromEntries(result.rows.map(row=>[row.key,row.value]))
+  let smtpConfigured=false
+  if(values.smtp_config){try{const v=JSON.parse(decrypt(values.smtp_config));smtpConfigured=Boolean(v.host&&v.user&&v.pass)}catch{}}
+  res.json({
+   maintenanceMode:values.maintenance_mode==='true',
+   supportEmail:values.support_email??process.env.SUPPORT_EMAIL??'',
+   smtpConfigured,
+   razorpayKeyId:values.razorpay_key_id||'',
+   razorpayKeySecretPresent:Boolean(values.razorpay_key_secret),
+   qrMode:values.qr_mode==='true',
+   upiVpa:values.upi_vpa||'',
+   donationMessage:values.donation_message||'MangoCode is free to use. Contributions help cover hosting and keep learning resources available.',
+  })
  }catch(e){next(e)}
 })
 adminRouter.put('/settings',async(req,res,next)=>{
  try {
-  if(typeof req.body?.maintenanceMode==='boolean')await setSetting('maintenance_mode',String(req.body.maintenanceMode),req.userId)
-  if(typeof req.body?.supportEmail==='string'){
-   const email=req.body.supportEmail.trim().slice(0,254)
+  const body=req.body||{}
+  if(typeof body.maintenanceMode==='boolean')await setSetting('maintenance_mode',String(body.maintenanceMode),req.userId)
+  if(typeof body.supportEmail==='string'){
+   const email=body.supportEmail.trim().slice(0,254)
    if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:'Enter a valid support email.'})
    await setSetting('support_email',email,req.userId)
+  }
+  if(typeof body.donationMessage==='string'){
+   if(body.donationMessage.length>4000)return res.status(400).json({error:'Donation message must be 4,000 characters or fewer.'})
+   await setSetting('donation_message',body.donationMessage.trim(),req.userId)
+  }
+  if(body.qrMode!==undefined){
+   if(typeof body.qrMode!=='boolean')return res.status(400).json({error:'Invalid UPI QR mode.'})
+   await setSetting('qr_mode',String(body.qrMode),req.userId)
+  }
+  if(body.upiVpa!==undefined){
+   const vpa=String(body.upiVpa||'').trim()
+   if(vpa&&!/^[A-Z0-9._-]{2,64}@[A-Z0-9.-]{2,64}$/i.test(vpa))return res.status(400).json({error:'Enter a valid UPI ID (for example, name@bank).'})
+   await setSetting('upi_vpa',vpa,req.userId)
+  }
+  if(body.razorpayKeyId!==undefined){
+   const keyId=String(body.razorpayKeyId||'').trim()
+   if(keyId.length>100)return res.status(400).json({error:'Razorpay Key ID is too long.'})
+   await setSetting('razorpay_key_id',keyId,req.userId)
+  }
+  if(body.razorpayKeySecret!==undefined){
+   const secret=String(body.razorpayKeySecret||'')
+   if(secret&&secret!=='••••••••'){
+    if(secret.length>500)return res.status(400).json({error:'Razorpay secret is too long.'})
+    await setSetting('razorpay_key_secret',encrypt(secret),req.userId)
+   }
   }
   await audit(req,'ADMIN_SETTINGS_UPDATE','settings')
   res.json({success:true})
@@ -129,6 +165,7 @@ adminRouter.put('/smtp',async(req,res,next)=>{
  try {
   const host=String(req.body?.host||'').trim(),user=String(req.body?.user||'').trim(),pass=String(req.body?.pass||''),from=String(req.body?.from||user).trim(),port=Number(req.body?.port||587),secure=Boolean(req.body?.secure)
   if(!host||!user||!pass||!Number.isInteger(port)||port<1||port>65535||!from)return res.status(400).json({error:'Complete all SMTP fields.'})
+  try { await resolvePublicSmtpHost(host) } catch { return res.status(400).json({error:'SMTP host must resolve only to public IP addresses.'}) }
   await setSetting('smtp_config',encrypt(JSON.stringify({host,user,pass,from,port,secure})),req.userId)
   await audit(req,'ADMIN_SMTP_UPDATE','settings')
   res.json({success:true})
@@ -157,4 +194,39 @@ adminRouter.put('/legal/:slug',async(req,res,next)=>{
 })
 adminRouter.get('/audit',async(req,res,next)=>{
  try {const r=await db.execute('SELECT a.id,a.action,a.target_type,a.target_id,a.metadata,a.created_at,u.name AS actor FROM admin_audit_logs a LEFT JOIN users u ON u.id=a.actor_user_id ORDER BY a.created_at DESC LIMIT 100');res.json(r.rows)}catch(e){next(e)}
+})
+
+adminRouter.get('/donations',async(req,res,next)=>{
+ try {
+  const r=await db.execute("SELECT d.id,d.amount_rupees,d.status,d.created_at,u.name AS username,u.email FROM donations d LEFT JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 250")
+  res.json(r.rows.map(row=>({...row,anonymous:!row.email})))
+ }catch(e){next(e)}
+})
+adminRouter.get('/upi-claims',async(req,res,next)=>{
+ try {
+  const r=await db.execute("SELECT c.id,c.amount_rupees,c.utr_number,c.status,c.created_at,c.reviewed_at,c.review_note,u.name AS username,u.email,u.has_donated FROM upi_donation_claims c JOIN users u ON u.id=c.user_id ORDER BY CASE c.status WHEN 'PENDING' THEN 0 WHEN 'APPROVED' THEN 1 ELSE 2 END,c.created_at DESC LIMIT 300")
+  res.json(r.rows)
+ }catch(e){next(e)}
+})
+adminRouter.patch('/upi-claims/:id/review',async(req,res,next)=>{
+ try {
+  const action=String(req.body?.action||'')
+  const note=typeof req.body?.note==='string'?req.body.note.trim().slice(0,500):''
+  if(!['approve','reject'].includes(action))return res.status(400).json({error:'Choose approve or reject.'})
+  const result=await db.transaction(async tx=>{
+   const current=await tx.execute({sql:'SELECT id,user_id,status FROM upi_donation_claims WHERE id=? FOR UPDATE',args:[req.params.id]})
+   const claim=current.rows[0]
+   if(!claim)return {status:'NOT_FOUND'}
+   if(claim.status!=='PENDING')return {status:'ALREADY_REVIEWED'}
+   const nextStatus=action==='approve'?'APPROVED':'REJECTED'
+   const updated=await tx.execute({sql:"UPDATE upi_donation_claims SET status=?,reviewed_at=CURRENT_TIMESTAMP,reviewed_by=?,review_note=? WHERE id=? AND status='PENDING'",args:[nextStatus,req.userId,note||null,req.params.id]})
+   if(updated.rowsAffected!==1)return {status:'ALREADY_REVIEWED'}
+   if(action==='approve')await tx.execute({sql:'UPDATE users SET has_donated=TRUE WHERE id=?',args:[claim.user_id]})
+   return {status:nextStatus,userId:claim.user_id}
+  })
+  if(result.status==='NOT_FOUND')return res.status(404).json({error:'UPI claim not found.'})
+  if(result.status==='ALREADY_REVIEWED')return res.status(409).json({error:'This UPI claim has already been reviewed.'})
+  await audit(req,'ADMIN_UPI_CLAIM_'+result.status,'upi_claim',String(req.params.id),{note})
+  res.json({success:true,status:result.status})
+ }catch(e){next(e)}
 })
