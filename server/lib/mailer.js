@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer'
 import crypto from 'node:crypto'
 import { db } from '../db.js'
+import { resolvePublicSmtpHost } from './smtpSecurity.js'
 
 function required(name, value) {
   if (!value) throw new Error(name + ' is not configured.')
@@ -38,6 +39,7 @@ async function transporterConfig() {
     }
   }
   const host = required('SMTP_HOST', config.host)
+  await resolvePublicSmtpHost(host)
   const user = required('SMTP_USER', config.user)
   const pass = required('SMTP_PASS', config.pass)
   const port = Number(config.port || 587)
