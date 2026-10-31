@@ -111,11 +111,13 @@ adminRouter.get('/settings',async(req,res,next)=>{
   const result=await db.execute({sql:'SELECT key,value FROM admin_settings WHERE key = ANY(?)',args:[keys]})
   const values=Object.fromEntries(result.rows.map(row=>[row.key,row.value]))
   let smtpConfigured=false
-  if(values.smtp_config){try{const v=JSON.parse(decrypt(values.smtp_config));smtpConfigured=Boolean(v.host&&v.user&&v.pass)}catch{}}
+  let smtp={}
+  if(values.smtp_config){try{const v=JSON.parse(decrypt(values.smtp_config));smtpConfigured=Boolean(v.host&&v.user&&v.pass);smtp={host:v.host||'',port:v.port||587,secure:Boolean(v.secure),user:v.user||'',from:v.from||''}}catch{}}
   res.json({
    maintenanceMode:values.maintenance_mode==='true',
    supportEmail:values.support_email??process.env.SUPPORT_EMAIL??'',
    smtpConfigured,
+   smtp,
    razorpayKeyId:values.razorpay_key_id||'',
    razorpayKeySecretPresent:Boolean(values.razorpay_key_secret),
    qrMode:values.qr_mode==='true',
@@ -164,9 +166,20 @@ adminRouter.put('/settings',async(req,res,next)=>{
 })
 adminRouter.put('/smtp',async(req,res,next)=>{
  try {
-  const host=String(req.body?.host||'').trim(),user=String(req.body?.user||'').trim(),pass=String(req.body?.pass||''),from=String(req.body?.from||user).trim(),port=Number(req.body?.port||587),secure=Boolean(req.body?.secure)
-  if(!host||!user||!pass||!Number.isInteger(port)||port<1||port>65535||!from)return res.status(400).json({error:'Complete all SMTP fields.'})
+  const host=String(req.body?.host||'').trim()
+  const user=String(req.body?.user||'').trim()
+  const from=String(req.body?.from||user).trim()
+  const port=Number(req.body?.port||587)
+  const secure=req.body?.secure===true
+  if(req.body?.secure!==undefined&&typeof req.body.secure!=='boolean')return res.status(400).json({error:'Invalid SMTP security option.'})
+  if(!host||host.length>253||!user||user.length>320||/[\\r\\n]/.test(user)||!Number.isInteger(port)||port<1||port>65535||!from||from.length>254||! /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(from))return res.status(400).json({error:'Enter valid SMTP host, username, port and sender address.'})
   try { await resolvePublicSmtpHost(host) } catch { return res.status(400).json({error:'SMTP host must resolve only to public IP addresses.'}) }
+  const previous=await getSetting('smtp_config','')
+  let previousConfig={}
+  if(previous){try{previousConfig=JSON.parse(decrypt(previous))}catch{return res.status(500).json({error:'Saved SMTP settings cannot be decrypted. Check SESSION_SECRET.'})}}
+  const providedPass=typeof req.body?.pass==='string'?req.body.pass:''
+  const pass=providedPass||previousConfig.pass||''
+  if(!pass||pass.length>1024||/[\\r\\n]/.test(pass))return res.status(400).json({error:'Enter an SMTP password to configure this connection.'})
   await setSetting('smtp_config',encrypt(JSON.stringify({host,user,pass,from,port,secure})),req.userId)
   await audit(req,'ADMIN_SMTP_UPDATE','settings')
   res.json({success:true})
