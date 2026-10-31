@@ -78,7 +78,7 @@ export function ThirdPartyNoticePage() {
     ['Neon', 'PostgreSQL database hosting for accounts, lessons, progress, assessment attempts and exercise history.', 'https://neon.tech/privacy-policy'],
     ['Vercel', 'Website hosting, deployment and serverless API delivery.', 'https://vercel.com/legal/privacy-policy'],
     ['Piston', 'Remote execution of code submitted for supported programming practicals.', 'https://github.com/engineer-man/piston'],
-    ['Discord', 'Receives bug-report descriptions, category, page path and a user identifier when the reporter is signed in, via the project's configured webhook.', 'https://discord.com/privacy'],
+    ['Discord', 'Receives bug-report descriptions, category, page path and a user identifier when the reporter is signed in, via the configured project webhook.', 'https://discord.com/privacy'],
     ['SMTP / email provider', 'The SMTP provider configured by the project sends verification and password-reset messages to the address the learner submits.', ''],
   ]
   return <LegalLayout label="TRANSPARENCY" title="Third-party Services Notice" updated="November 1, 2026">
