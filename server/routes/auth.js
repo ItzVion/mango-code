@@ -120,7 +120,7 @@ async function applyOwnerRole(user) {
 
 async function findUserByEmail(email) {
   const result = await db.execute({
-    sql: 'SELECT id, email, name, password_hash, google_sub, role, email_verified_at, has_donated FROM users WHERE email = ? LIMIT 1',
+    sql: 'SELECT id, email, name, password_hash, google_sub, role, email_verified_at, legal_accepted_at, has_donated FROM users WHERE email = ? LIMIT 1',
     args: [email],
   })
   return result.rows[0] || null
@@ -264,8 +264,13 @@ authRouter.post('/login', async (req, res, next) => {
     const user = await findUserByEmail(email)
     if (!user?.password_hash || !(await verifyPassword(password, user.password_hash))) return res.status(401).json({ error: 'Email or password is incorrect.' })
     const current = await applyOwnerRole(user)
+    if (!current.legal_accepted_at && req.body?.legalAccepted !== true) {
+      return res.status(428).json({ error: 'Please review and accept the Terms and Privacy Policy before signing in.' })
+    }
     if (req.body?.legalAccepted === true) {
-      await db.execute({ sql: 'UPDATE users SET legal_accepted_at = CURRENT_TIMESTAMP WHERE id = ?', args: [current.id] })
+      const acceptedAt = new Date().toISOString()
+      await db.execute({ sql: 'UPDATE users SET legal_accepted_at = ? WHERE id = ?', args: [acceptedAt, current.id] })
+      current.legal_accepted_at = acceptedAt
     }
     await createSession(current.id, res)
     res.json({ user: publicUser(current) })
