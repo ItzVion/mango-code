@@ -222,7 +222,7 @@ export default function Auth() {
         {error && <p role="alert" className="rounded-lg border border-rose/30 bg-rose/5 p-3 text-sm text-rose">{error}</p>}
         {notice && <p role="status" className="rounded-lg border border-leaf/30 bg-leaf/5 p-3 text-sm text-leaf">{notice}</p>}
 
-        <button type="submit" disabled={busy || ((mode === 'register' || mode === 'login') && !legalAccepted && mode === 'register')} className="w-full rounded-lg bg-ink px-4 py-3 text-sm font-semibold text-paper hover:bg-ink/85 disabled:opacity-50">
+        <button type="submit" disabled={busy || ((mode === 'register' || mode === 'login') && !legalAccepted)} className="w-full rounded-lg bg-ink px-4 py-3 text-sm font-semibold text-paper hover:bg-ink/85 disabled:opacity-50">
           {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : mode === 'register' ? 'Send verification code' : mode === 'verify' ? 'Verify and create account' : mode === 'reset-request' ? 'Send reset code' : 'Reset password'}
         </button>
       </form>

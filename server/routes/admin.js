@@ -77,7 +77,7 @@ adminRouter.post('/users',async(req,res,next)=>{
   if(!name||name.length>60)return res.status(400).json({error:'Name must be 1–60 characters.'})
   if(typeof password!=='string'||password.length<8||password.length>128)return res.status(400).json({error:'Password must be 8–128 characters.'})
   const hash=await hashPassword(password),id=crypto.randomUUID()
-  const r=await db.execute({sql:"INSERT INTO users (id,email,name,password_hash,auth_provider,role,email_verified_at,legal_accepted_at) VALUES (?,?,?,?,'password','USER',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id,email,name,role,created_at",args:[id,email,name,hash]})
+  const r=await db.execute({sql:"INSERT INTO users (id,email,name,password_hash,auth_provider,role,email_verified_at,legal_accepted_at) VALUES (?,?,?,?,'password','USER',CURRENT_TIMESTAMP,NULL) RETURNING id,email,name,role,created_at",args:[id,email,name,hash]})
   await audit(req,'ADMIN_USER_CREATE','user',id,{email})
   res.status(201).json(r.rows[0])
  } catch(e){if(e.code==='23505')return res.status(409).json({error:'An account with this email already exists.'});next(e)}
