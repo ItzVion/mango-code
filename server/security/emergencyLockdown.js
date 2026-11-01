@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import pg from 'pg'
+import { sendSecurityAlertEmail } from '../lib/mailer.js'
 
 const { Pool } = pg
 const databaseUrl = process.env.DATABASE_URL
@@ -86,15 +87,8 @@ async function notify(title, message) {
     body: JSON.stringify({ username: 'MangoCode Security', content: `🚨 ${title}`, embeds: [{ description: message, color: 0xFFB627, timestamp: new Date().toISOString() }] }),
     signal: AbortSignal.timeout(5000),
   }))
-  const apiKey = process.env.RESEND_API_KEY
-  const to = process.env.SECURITY_ALERT_EMAIL || process.env.ALERT_EMAIL
-  const from = process.env.SECURITY_EMAIL_FROM
-  if (apiKey && to && from) jobs.push(fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ from, to: [to], subject: `MangoCode Security: ${title}`, text: message }),
-    signal: AbortSignal.timeout(5000),
-  }))
+  const to = process.env.SECURITY_ALERT_EMAIL || process.env.ALERT_EMAIL || process.env.SUPPORT_EMAIL
+  if (to) jobs.push(sendSecurityAlertEmail(title, message, to))
   await Promise.allSettled(jobs)
 }
 

@@ -96,3 +96,20 @@ export async function sendAccountExistsEmail(email) {
     html: emailShell('Your account already exists', '<p style="font-size:14px;line-height:1.7;color:#59635e">Someone tried to create a MangoCode account using this email address. If that was you, sign in to your existing account. If it was not you, no action is needed.</p>'),
   })
 }
+
+export async function sendSecurityAlertEmail(title, message, recipient) {
+  const to = String(recipient || '').trim()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to) || to.length > 254) {
+    throw new Error('A valid SECURITY_ALERT_EMAIL recipient is required.')
+  }
+  const config = await transporterConfig()
+  const safeTitle = String(title || 'Security alert').replace(/[\r\n]/g, ' ').slice(0, 120)
+  const safeMessage = String(message || '').slice(0, 5000)
+  await config.transporter.sendMail({
+    from: config.from,
+    to,
+    subject: 'MangoCode Security: ' + safeTitle,
+    text: safeMessage,
+    html: emailShell('Security alert: ' + escapeHtml(safeTitle), '<pre style="white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 monospace;color:#34423a">' + escapeHtml(safeMessage) + '</pre>'),
+  })
+}
