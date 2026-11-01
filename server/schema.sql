@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS users (
   has_donated BOOLEAN NOT NULL DEFAULT FALSE,
   email_verified_at TIMESTAMPTZ,
   legal_accepted_at TIMESTAMPTZ,
+  legal_accepted_version TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS auth_otps (
   name TEXT,
   password_hash TEXT,
   legal_accepted_at TIMESTAMPTZ,
+  legal_version TEXT,
   expires_at TIMESTAMPTZ NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 0,
   last_sent_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
