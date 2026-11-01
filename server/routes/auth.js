@@ -21,6 +21,23 @@ function normalizeEmail(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : ''
 }
 
+let legalVersionCache = null
+async function getCurrentLegalVersion() {
+  const now = Date.now()
+  if (legalVersionCache && legalVersionCache.expiresAt > now) return legalVersionCache.value
+  const slugs = ['about', 'privacy', 'terms', 'refund']
+  const result = await db.execute({
+    sql: 'SELECT slug, content FROM legal_pages WHERE slug IN (?, ?, ?, ?) ORDER BY slug',
+    args: slugs,
+  })
+  const contentBySlug = new Map(result.rows.map(row => [row.slug, row.content]))
+  const canonical = slugs.map(slug => `${slug}\\0${contentBySlug.get(slug) || ''}`).join('\\0')
+  const digest = crypto.createHash('sha256').update(canonical, 'utf8').digest('hex').slice(0, 16)
+  const value = `2026-11-01-${digest}`
+  legalVersionCache = { value, expiresAt: now + 30_000 }
+  return value
+}
+
 function publicUser(user) {
   if (!user) return null
   return {
@@ -120,13 +137,13 @@ async function applyOwnerRole(user) {
 
 async function findUserByEmail(email) {
   const result = await db.execute({
-    sql: 'SELECT id, email, name, password_hash, google_sub, role, email_verified_at, legal_accepted_at, has_donated FROM users WHERE email = ? LIMIT 1',
+    sql: 'SELECT id, email, name, password_hash, google_sub, role, email_verified_at, legal_accepted_at, legal_accepted_version, has_donated FROM users WHERE email = ? LIMIT 1',
     args: [email],
   })
   return result.rows[0] || null
 }
 
-async function issueOtp({ email, purpose, name = null, passwordHash = null, legalAccepted = false }) {
+async function issueOtp({ email, purpose, name = null, passwordHash = null, legalAccepted = false, legalVersion = null }) {
   // OTPs are short-lived; remove expired rows so abandoned sign-up/reset requests do not accumulate.
   await db.execute({ sql: 'DELETE FROM auth_otps WHERE expires_at <= CURRENT_TIMESTAMP' })
   const code = crypto.randomInt(100000, 1000000).toString()
@@ -134,8 +151,8 @@ async function issueOtp({ email, purpose, name = null, passwordHash = null, lega
   const expiresAt = new Date(now.getTime() + OTP_TTL_MS)
   const tokenHash = otpHash(code)
   await db.execute({
-    sql: 'INSERT INTO auth_otps (email, purpose, token_hash, name, password_hash, legal_accepted_at, expires_at, attempts, last_sent_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?) ON CONFLICT (email, purpose) DO UPDATE SET token_hash = EXCLUDED.token_hash, name = EXCLUDED.name, password_hash = EXCLUDED.password_hash, legal_accepted_at = EXCLUDED.legal_accepted_at, expires_at = EXCLUDED.expires_at, attempts = 0, last_sent_at = EXCLUDED.last_sent_at',
-    args: [email, purpose, tokenHash, name, passwordHash, legalAccepted ? now.toISOString() : null, expiresAt.toISOString(), now.toISOString()],
+    sql: 'INSERT INTO auth_otps (email, purpose, token_hash, name, password_hash, legal_accepted_at, legal_version, expires_at, attempts, last_sent_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?) ON CONFLICT (email, purpose) DO UPDATE SET token_hash = EXCLUDED.token_hash, name = EXCLUDED.name, password_hash = EXCLUDED.password_hash, legal_accepted_at = EXCLUDED.legal_accepted_at, legal_version = EXCLUDED.legal_version, expires_at = EXCLUDED.expires_at, attempts = 0, last_sent_at = EXCLUDED.last_sent_at',
+    args: [email, purpose, tokenHash, name, passwordHash, legalAccepted ? now.toISOString() : null, legalVersion, expiresAt.toISOString(), now.toISOString()],
   })
   try {
     await sendCodeEmail(email, code, purpose)
@@ -192,7 +209,8 @@ authRouter.post('/register', async (req, res, next) => {
       try { await sendAccountExistsEmail(email) } catch (mailError) { console.warn('Account notice email could not be sent:', mailError?.message || mailError) }
       return res.status(409).json({ error: 'An account already exists for this email. Sign in instead or reset its password.' })
     }
-    await issueOtp({ email, purpose: 'register', name, passwordHash: await hashPassword(password), legalAccepted: true })
+    const legalVersion = await getCurrentLegalVersion()
+    await issueOtp({ email, purpose: 'register', name, passwordHash: await hashPassword(password), legalAccepted: true, legalVersion })
     res.json({ success: true, email, expiresInSeconds: OTP_TTL_MS / 1000 })
   } catch (error) { next(error) }
 })
@@ -208,6 +226,11 @@ authRouter.post('/verify-otp', async (req, res, next) => {
     const verified = await checkOtp(email, 'register', code)
     if (!verified.ok) return res.status(400).json({ error: verified.error })
     const row = verified.row
+    const legalVersion = await getCurrentLegalVersion()
+    if (!row.legal_version || row.legal_version !== legalVersion) {
+      await db.execute({ sql: 'DELETE FROM auth_otps WHERE email = ? AND purpose = ? AND token_hash = ?', args: [email, 'register', row.token_hash] })
+      return res.status(409).json({ error: 'The legal policies changed while you were verifying your email. Please start registration again.' })
+    }
     const inserted = await db.transaction(async tx => {
       const consumed = await tx.execute({
         sql: 'DELETE FROM auth_otps WHERE email = ? AND purpose = ? AND token_hash = ? AND expires_at > CURRENT_TIMESTAMP AND attempts < ?',
@@ -216,8 +239,8 @@ authRouter.post('/verify-otp', async (req, res, next) => {
       if (consumed.rowsAffected !== 1) return null
       const userId = crypto.randomUUID()
       const created = await tx.execute({
-        sql: "INSERT INTO users (id, email, name, password_hash, auth_provider, role, email_verified_at, legal_accepted_at) VALUES (?, ?, ?, ?, 'password', 'USER', CURRENT_TIMESTAMP, ?) RETURNING id, email, name, role, email_verified_at",
-        args: [userId, email, row.name, row.password_hash, row.legal_accepted_at || new Date().toISOString()],
+        sql: "INSERT INTO users (id, email, name, password_hash, auth_provider, role, email_verified_at, legal_accepted_at, legal_accepted_version) VALUES (?, ?, ?, ?, 'password', 'USER', CURRENT_TIMESTAMP, ?, ?) RETURNING id, email, name, role, email_verified_at",
+        args: [userId, email, row.name, row.password_hash, row.legal_accepted_at || new Date().toISOString(), legalVersion],
       })
       return created.rows[0] || null
     })
@@ -241,14 +264,19 @@ authRouter.post('/resend-otp', async (req, res, next) => {
     ])
     if (!ipLimit || !emailLimit) return res.status(429).json({ error: 'Too many resend requests. Try again later.' })
     const pending = await db.execute({
-      sql: 'SELECT name, password_hash, legal_accepted_at, last_sent_at FROM auth_otps WHERE email = ? AND purpose = ? LIMIT 1',
+      sql: 'SELECT name, password_hash, legal_accepted_at, legal_version, last_sent_at FROM auth_otps WHERE email = ? AND purpose = ? LIMIT 1',
       args: [email, 'register'],
     })
     const row = pending.rows[0]
     if (!row) return res.status(400).json({ error: 'No pending registration. Start again.' })
+    const legalVersion = await getCurrentLegalVersion()
+    if (!row.legal_version || row.legal_version !== legalVersion) {
+      await db.execute({ sql: 'DELETE FROM auth_otps WHERE email = ? AND purpose = ?', args: [email, 'register'] })
+      return res.status(409).json({ error: 'The legal policies changed. Please start registration again.' })
+    }
     const lastSent = new Date(row.last_sent_at).getTime()
     if (Number.isFinite(lastSent) && Date.now() - lastSent < OTP_RESEND_MS) return res.status(429).json({ error: 'Please wait before requesting another code.' })
-    await issueOtp({ email, purpose: 'register', name: row.name, passwordHash: row.password_hash, legalAccepted: Boolean(row.legal_accepted_at) })
+    await issueOtp({ email, purpose: 'register', name: row.name, passwordHash: row.password_hash, legalAccepted: Boolean(row.legal_accepted_at), legalVersion })
     res.json({ success: true })
   } catch (error) { next(error) }
 })
@@ -267,13 +295,15 @@ authRouter.post('/login', async (req, res, next) => {
     const user = await findUserByEmail(email)
     if (!user?.password_hash || !(await verifyPassword(password, user.password_hash))) return res.status(401).json({ error: 'Email or password is incorrect.' })
     const current = await applyOwnerRole(user)
-    if (!current.legal_accepted_at && req.body?.legalAccepted !== true) {
-      return res.status(428).json({ error: 'Please review and accept the Terms and Privacy Policy before signing in.' })
+    const legalVersion = await getCurrentLegalVersion()
+    if (current.legal_accepted_version !== legalVersion && req.body?.legalAccepted !== true) {
+      return res.status(428).json({ error: 'Please review and accept the current Terms and Privacy Policy before signing in.' })
     }
     if (req.body?.legalAccepted === true) {
       const acceptedAt = new Date().toISOString()
-      await db.execute({ sql: 'UPDATE users SET legal_accepted_at = ? WHERE id = ?', args: [acceptedAt, current.id] })
+      await db.execute({ sql: 'UPDATE users SET legal_accepted_at = ?, legal_accepted_version = ? WHERE id = ?', args: [acceptedAt, legalVersion, current.id] })
       current.legal_accepted_at = acceptedAt
+      current.legal_accepted_version = legalVersion
     }
     await createSession(current.id, res)
     res.json({ user: publicUser(current) })
@@ -328,8 +358,9 @@ authRouter.post('/google', async (req, res, next) => {
     }
     const current = await applyOwnerRole(user)
     // The Google sign-in screen requires an explicit acceptance checkbox.
-    // Persist that event instead of silently treating sign-in as consent.
-    await db.execute({ sql: 'UPDATE users SET legal_accepted_at = CURRENT_TIMESTAMP WHERE id = ?', args: [current.id] })
+    // Persist the exact policy revision accepted by the user.
+    const legalVersion = await getCurrentLegalVersion()
+    await db.execute({ sql: 'UPDATE users SET legal_accepted_at = CURRENT_TIMESTAMP, legal_accepted_version = ? WHERE id = ?', args: [legalVersion, current.id] })
     await createSession(current.id, res)
     res.json({ user: publicUser(current) })
   } catch (error) { next(error) }
