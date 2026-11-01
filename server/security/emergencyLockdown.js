@@ -1,21 +1,14 @@
 import crypto from 'node:crypto'
 import pg from 'pg'
 import { sendSecurityAlertEmail } from '../lib/mailer.js'
+import { postgresConfigFromUrl } from '../lib/postgresConfig.js'
 
 const { Pool } = pg
 const databaseUrl = process.env.DATABASE_URL
 if (!databaseUrl) throw new Error('DATABASE_URL is required')
 const isProduction = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL)
-const connectionString = (() => {
-  try {
-    const parsed = new URL(databaseUrl)
-    parsed.searchParams.delete('sslmode')
-    return parsed.toString()
-  } catch { return databaseUrl }
-})()
-
 const pool = new Pool({
-  connectionString,
+  ...postgresConfigFromUrl(databaseUrl, { isProduction }),
   max: Number(process.env.SECURITY_DB_POOL_MAX || 2),
   min: 0,
   idleTimeoutMillis: 20_000,

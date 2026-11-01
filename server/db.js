@@ -1,5 +1,6 @@
 import pg from 'pg'
 import 'dotenv/config'
+import { postgresConfigFromUrl } from './lib/postgresConfig.js'
 
 const { Pool } = pg
 const databaseUrl = process.env.DATABASE_URL
@@ -8,19 +9,9 @@ if (!databaseUrl) throw new Error('DATABASE_URL is required')
 // Preserve the current secure TLS verification behavior explicitly. `require`
 // is currently treated as `verify-full` by pg-connection-string, but that alias
 // changes semantics in the next major release.
-const connectionString = (() => {
-  try {
-    const parsed = new URL(databaseUrl)
-    if (parsed.searchParams.get('sslmode')?.toLowerCase() === 'require') {
-      parsed.searchParams.set('sslmode', 'verify-full')
-    }
-    return parsed.toString()
-  } catch { return databaseUrl }
-})()
-
 const isProduction = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL)
 const pool = new Pool({
-  connectionString,
+  ...postgresConfigFromUrl(databaseUrl, { isProduction }),
   max: Number(process.env.PG_POOL_MAX || (process.env.VERCEL ? 4 : 10)),
   min: 0,
   idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 20_000),
