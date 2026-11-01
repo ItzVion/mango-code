@@ -29,10 +29,13 @@ pool.on('error', (error) => console.error('MangoCode security DB pool error:', e
 
 const LOCKDOWN_HOURS = 24
 const LOCKDOWN_CACHE_MS = 1000
-const SENSITIVE_PREFIXES = ['/api/auth', '/api/exercises', '/api/admin', '/api/lessons', '/api/quiz']
+const INCIDENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+const INCIDENT_CLEANUP_INTERVAL_MS = 60 * 60 * 1000
+const SENSITIVE_PREFIXES = ['/api/auth', '/api/exercises', '/api/admin', '/api/lessons', '/api/quiz', '/api/donations', '/api/bugreport']
 let schemaPromise
 let lockdownCache = { checkedAt: 0, row: null }
 let lastElevatedNoticeAt = 0
+let lastIncidentCleanupAt = 0
 
 function sensitive(path) {
   return SENSITIVE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
@@ -160,6 +163,12 @@ export async function emergencyMiddleware(req, res, next) {
   try {
     await ensureSchema()
     if (req.path === '/api/security/status' || req.path === '/api/security/lockdown' || req.path === '/api/security/recover' || req.path === '/api/health') return next()
+    const now = Date.now()
+    if (now - lastIncidentCleanupAt >= INCIDENT_CLEANUP_INTERVAL_MS) {
+      lastIncidentCleanupAt = now
+      void pool.query("DELETE FROM security_incidents WHERE created_at < now() - interval '30 days'")
+        .catch((error) => console.error('Security incident retention cleanup failed:', error?.message || error))
+    }
     const lock = await currentLockdown()
     if (lock) {
       res.status(503)

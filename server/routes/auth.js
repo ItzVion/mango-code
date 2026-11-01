@@ -127,6 +127,8 @@ async function findUserByEmail(email) {
 }
 
 async function issueOtp({ email, purpose, name = null, passwordHash = null, legalAccepted = false }) {
+  // OTPs are short-lived; remove expired rows so abandoned sign-up/reset requests do not accumulate.
+  await db.execute({ sql: 'DELETE FROM auth_otps WHERE expires_at <= CURRENT_TIMESTAMP' })
   const code = crypto.randomInt(100000, 1000000).toString()
   const now = new Date()
   const expiresAt = new Date(now.getTime() + OTP_TTL_MS)
