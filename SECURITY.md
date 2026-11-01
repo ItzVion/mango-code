@@ -22,10 +22,11 @@ For a private report, contact the repository owner through GitHub's private secu
 
 ## Database hardening status
 
-- Row-level security is enabled on every current public table in the production Neon database.
-- The production application still connects with the table-owning Neon role. PostgreSQL table owners normally bypass RLS, and there are currently no RLS policies. Therefore, RLS is **not** a per-user isolation boundary yet; server-side ownership checks remain mandatory.
-- Do not enable FORCE ROW LEVEL SECURITY or add permissive policies as a shortcut. A future least-privilege role must be demonstrably NOSUPERUSER, NOCREATEDB, NOCREATEROLE, and NOBYPASSRLS, and the application's authorization model must be tested before switching production credentials.
-- Production application startup must verify the schema, not run DDL. Apply schema changes as reviewed migrations.
+- Row-level security is enabled on all 20 production public tables.
+- Vercel production now uses the dedicated `mangocode_app` login role. It is `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, `NOBYPASSRLS`, and `NOINHERIT`, with a 10-connection limit. It has DML privileges only; the table-owning `neondb_owner` role is reserved for migrations and database administration.
+- RLS policies exist for the application role, but they are currently service-level policies that allow the application role to access all rows. They are **not** per-user row isolation. Server-side authorization and ownership filters remain mandatory.
+- Do not enable FORCE ROW LEVEL SECURITY or replace the service policies with user policies until request identity is securely set transaction-locally and all routes, background jobs, OTP flows, public pages, and admin operations have been tested.
+- Production startup verifies the schema; schema changes must be applied as reviewed migrations.
 
 ## Incident response and log handling
 
