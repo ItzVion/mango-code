@@ -57,12 +57,13 @@ bugreportRouter.post('/', optionalAuth, async (req, res, next) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(8000),
+      redirect: 'error',
     })
     if (!response.ok) {
       console.error('Discord bug report delivery failed with status:', response.status)
       return res.json({ success: true, reportId, delivered: false })
     }
-    res.json({ success: true, reportId })
+    res.json({ success: true, reportId, delivered: true })
   } catch (error) {
     console.error('Bug report delivery failed:', error?.message || error)
     res.json({ success: true, reportId, delivered: false })

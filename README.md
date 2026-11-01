@@ -6,7 +6,7 @@ MangoCode is an animated coding-learning platform for HTML & CSS, JavaScript, Py
 
 - Frontend: React + Vite + Tailwind CSS v4 + Motion
 - Production hosting: Vercel
-- Production API: Vercel serverless handler at `api/index.js`, backed by the PostgreSQL server implementation in `server/index.js`
+- Production API: Vercel serverless handler at `api/index.mjs`, backed by the PostgreSQL server implementation in `server/index.js`
 - Database: Neon/PostgreSQL, configured through `DATABASE_URL`
 - Code execution: Piston API for Python, JavaScript, C, and C++ exercises
 
@@ -37,7 +37,7 @@ The production API expects the PostgreSQL schema to exist and checks for the req
 
 ## Vercel
 
-The Vercel project uses the repository root as its Root Directory. The root `vercel.json` installs server and client dependencies, builds the client into `client/dist`, serves the SPA, and routes `/api/*` to `api/index.js`. The handler delegates API requests to the PostgreSQL-backed server.
+The Vercel project uses the repository root as its Root Directory. The root `vercel.json` installs server and client dependencies, builds the client into `client/dist`, serves the SPA, and routes `/api/*` to `api/index.mjs`. The handler delegates API requests to the PostgreSQL-backed server.
 
 Required Production environment variables:
 
@@ -56,7 +56,8 @@ The learning app uses Neon PostgreSQL. The additive migration at `server/migrati
 - `DATABASE_URL`: the existing Neon connection string.
 - `SESSION_SECRET`: a random secret of at least 32 characters. It is used to HMAC one-time email codes. `OTP_SECRET` is optional; when omitted, `SESSION_SECRET` is used.
 - `OWNER_EMAIL`: the exact email address that should receive the `OWNER` role when that account signs in.
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, and `SMTP_FROM`: mail delivery for registration verification and password-reset codes.
+- SMTP is configured in `/admin` → **Email delivery**. Use the exact outgoing server hostname shown in Zoho Mail account settings. Personal/free organisation accounts commonly use `smtp.zoho.com` or a regional equivalent; paid custom-domain organisation accounts commonly use `smtppro.zoho.com` or a regional equivalent. Use port `465` with SSL (`secure: true`) or `587` with TLS (`secure: false`). Zoho may require an application-specific password when two-factor authentication is enabled. Credentials are encrypted before storage in Neon using `SESSION_SECRET`.
+- `DISCORD_BUG_WEBHOOK`: a newly rotated Discord webhook for in-app bug reports. Configure it only in Vercel Production environment variables. Never put it in frontend variables or Git.
 - `GOOGLE_CLIENT_ID`: Google Identity Services Web OAuth client ID used by the API to verify Google ID tokens.
 - `VITE_GOOGLE_CLIENT_ID`: the same Web OAuth client ID, exposed to the frontend for the official Google sign-in button. This is a public client ID, never a client secret.
 - `DISCORD_BUG_WEBHOOK`: a newly rotated Discord webhook used by the server-side bug-report endpoint. Never place a webhook URL in frontend code.
@@ -69,4 +70,4 @@ For Google Identity Services, add the public site's exact HTTPS origin in the We
 
 Signed-in learners have lesson completion, exercise attempts, checkpoint attempts and learning streaks stored against their account. Guest code runs are not attached to an account. The account's Saved results page is available at `/results`.
 
-Bug reports are rate-limited and forwarded from the server to Discord. Reports contain the category, page path and description; the webhook secret is read only from the server environment.
+Bug reports are rate-limited and saved in Neon, then forwarded from the server to the configured Discord webhook. Reports contain the category, page path, description and an internal account ID when signed in. They can be reviewed under `/admin` → **Reports**. If Discord delivery is not configured or fails, the UI reports that the report was saved but not delivered.

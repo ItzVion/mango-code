@@ -16,5 +16,6 @@ For a private report, contact the repository owner through GitHub's private secu
 ## Production emergency controls
 
 - Configure `SECURITY_BREAK_GLASS_TOKEN` as a unique, high-entropy Vercel production secret; keep it in a password manager and never commit it.
-- Configure at least one private alert destination (`SECURITY_DISCORD_WEBHOOK_URL`, or `RESEND_API_KEY` with `SECURITY_ALERT_EMAIL` and `SECURITY_EMAIL_FROM`).
+- Configure a dedicated private alert destination (`SECURITY_DISCORD_WEBHOOK_URL` or `DISCORD_SECURITY_WEBHOOK_URL`). Keep emergency-alert webhooks separate from the in-app bug-report webhook.
+- Bug-report delivery uses `DISCORD_BUG_WEBHOOK`. Rotate any webhook pasted into a chat, issue, screenshot or source file before configuring it.
 - Verify the emergency lockdown and recovery procedures in a non-production environment before relying on them.
