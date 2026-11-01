@@ -235,8 +235,11 @@ authRouter.post('/resend-otp', async (req, res, next) => {
   try {
     const email = normalizeEmail(req.body?.email)
     if (!EMAIL_RE.test(email) || email.length > 254) return res.status(400).json({ error: 'Enter a valid email address.' })
-    const limit = await checkRateLimit('resend-otp:ip:' + clientIp(req), 5, 15 * 60 * 1000)
-    if (!limit) return res.status(429).json({ error: 'Too many resend requests. Try again later.' })
+    const [ipLimit, emailLimit] = await Promise.all([
+      checkRateLimit('resend-otp:ip:' + clientIp(req), 5, 15 * 60 * 1000),
+      checkRateLimit('resend-otp:email:' + email, 4, 60 * 60 * 1000),
+    ])
+    if (!ipLimit || !emailLimit) return res.status(429).json({ error: 'Too many resend requests. Try again later.' })
     const pending = await db.execute({
       sql: 'SELECT name, password_hash, legal_accepted_at, last_sent_at FROM auth_otps WHERE email = ? AND purpose = ? LIMIT 1',
       args: [email, 'register'],
