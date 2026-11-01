@@ -166,7 +166,7 @@ export async function emergencyMiddleware(req, res, next) {
     const now = Date.now()
     if (now - lastIncidentCleanupAt >= INCIDENT_CLEANUP_INTERVAL_MS) {
       lastIncidentCleanupAt = now
-      void pool.query("DELETE FROM security_incidents WHERE created_at < now() - interval '30 days'")
+      void pool.query('DELETE FROM security_incidents WHERE created_at < $1', [new Date(now - INCIDENT_RETENTION_MS)])
         .catch((error) => console.error('Security incident retention cleanup failed:', error?.message || error))
     }
     const lock = await currentLockdown()
