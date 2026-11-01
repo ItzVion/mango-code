@@ -262,7 +262,9 @@ authRouter.post('/login', async (req, res, next) => {
     const user = await findUserByEmail(email)
     if (!user?.password_hash || !(await verifyPassword(password, user.password_hash))) return res.status(401).json({ error: 'Email or password is incorrect.' })
     const current = await applyOwnerRole(user)
-    await db.execute({ sql: 'UPDATE users SET legal_accepted_at = COALESCE(legal_accepted_at, CURRENT_TIMESTAMP) WHERE id = ?', args: [current.id] })
+    if (req.body?.legalAccepted === true) {
+      await db.execute({ sql: 'UPDATE users SET legal_accepted_at = CURRENT_TIMESTAMP WHERE id = ?', args: [current.id] })
+    }
     await createSession(current.id, res)
     res.json({ user: publicUser(current) })
   } catch (error) { next(error) }
@@ -315,6 +317,9 @@ authRouter.post('/google', async (req, res, next) => {
       }
     }
     const current = await applyOwnerRole(user)
+    // The Google sign-in screen requires an explicit acceptance checkbox.
+    // Persist that event instead of silently treating sign-in as consent.
+    await db.execute({ sql: 'UPDATE users SET legal_accepted_at = CURRENT_TIMESTAMP WHERE id = ?', args: [current.id] })
     await createSession(current.id, res)
     res.json({ user: publicUser(current) })
   } catch (error) { next(error) }

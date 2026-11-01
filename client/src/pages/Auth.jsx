@@ -107,7 +107,7 @@ export default function Auth() {
     setBusy(true); setError(''); setNotice('')
     try {
       if (mode === 'login') {
-        const data = await post('/api/auth/login', { email, password })
+        const data = await post('/api/auth/login', { email, password, legalAccepted })
         finish(data, 'Signed in. Your saved lessons and results are ready.')
       } else if (mode === 'register') {
         if (!legalAccepted) throw new Error('Please accept the Terms and Privacy Policy first.')

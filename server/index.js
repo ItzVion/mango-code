@@ -97,6 +97,22 @@ app.use('/api/exercises', async (req, res, next) => {
   } catch (err) { next(err) }
 })
 
+app.use('/api/tests/submit', async (req, res, next) => {
+  try {
+    const ok = await checkRateLimit(`tests:${clientIp(req)}`, 20, 10 * 60_000)
+    if (!ok) return res.status(429).json({ error: 'Too many assessment submissions. Please wait before trying again.' })
+    next()
+  } catch (err) { next(err) }
+})
+
+app.use('/api/progress/complete', async (req, res, next) => {
+  try {
+    const ok = await checkRateLimit(`progress:${clientIp(req)}`, 60, 10 * 60_000)
+    if (!ok) return res.status(429).json({ error: 'Too many progress updates. Please slow down.' })
+    next()
+  } catch (err) { next(err) }
+})
+
 app.use('/api/quiz/check', async (req, res, next) => {
   try {
     const ok = await checkRateLimit(`quiz:${clientIp(req)}`, 60, 60_000)

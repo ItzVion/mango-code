@@ -1,12 +1,6 @@
 name: Refresh lockfiles
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'client/package.json'
-      - 'server/package.json'
-      - '.github/workflows/refresh-locks.yml'
   workflow_dispatch:
 
 permissions:
