@@ -30,7 +30,8 @@ pool.on('error', (error) => console.error('MangoCode security DB pool error:', e
 
 const LOCKDOWN_HOURS = 24
 const LOCKDOWN_CACHE_MS = 1000
-const INCIDENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+// Keep security-event records for at least 180 days; review applicable CERT-In log duties separately.
+const INCIDENT_RETENTION_MS = 180 * 24 * 60 * 60 * 1000
 const INCIDENT_CLEANUP_INTERVAL_MS = 60 * 60 * 1000
 const SENSITIVE_PREFIXES = ['/api/auth', '/api/exercises', '/api/admin', '/api/lessons', '/api/quiz', '/api/donations', '/api/bugreport']
 let schemaPromise
