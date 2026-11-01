@@ -27,9 +27,24 @@ function baseHeaders(res) {
 export default async function handler(req, res) {
   baseHeaders(res)
 
-  if (req.url?.startsWith('/api/security/status')) return securityStatus(req, res)
-  if (req.url?.startsWith('/api/security/lockdown')) return activateLockdown(req, res)
-  if (req.url?.startsWith('/api/security/recover')) return recoverLockdown(req, res)
+  const requestPath = new URL(req.url || '/', 'http://mangocode.invalid').pathname
+  const methodNotAllowed = (allowed) => {
+    res.setHeader('Allow', allowed)
+    return res.status(405).json({ error: 'Method not allowed.' })
+  }
+
+  if (requestPath === '/api/security/status') {
+    if (req.method !== 'GET') return methodNotAllowed('GET')
+    return securityStatus(req, res)
+  }
+  if (requestPath === '/api/security/lockdown') {
+    if (req.method !== 'POST') return methodNotAllowed('POST')
+    return activateLockdown(req, res)
+  }
+  if (requestPath === '/api/security/recover') {
+    if (req.method !== 'POST') return methodNotAllowed('POST')
+    return recoverLockdown(req, res)
+  }
 
   if (req.url?.startsWith('/api/health')) {
     try {
