@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { CheckCircle2, XCircle, Play, Lightbulb, RotateCcw } from 'lucide-react'
 import { apiHeaders } from '../../lib/user'
 
-export function ExerciseBlock({ id, prompt, starterCode, language = 'Code' }) {
+export function ExerciseBlock({ id, prompt, starterCode, language = 'Code', onResult }) {
   const [code, setCode] = useState(starterCode || '')
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -19,12 +19,17 @@ export function ExerciseBlock({ id, prompt, starterCode, language = 'Code' }) {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setResult({ pass: false, message: data.message || data.error || 'The code runner could not check this yet. Please try again.' })
+        const failure = { pass: false, message: data.message || data.error || 'The code runner could not check this yet. Please try again.' }
+        setResult(failure)
+        onResult?.(failure)
         return
       }
       setResult(data)
+      onResult?.(data)
     } catch {
-      setResult({ pass: false, message: 'Could not reach the code runner. Check your connection and try again.' })
+      const failure = { pass: false, message: 'Could not reach the code runner. Check your connection and try again.' }
+      setResult(failure)
+      onResult?.(failure)
     } finally {
       setLoading(false)
     }
