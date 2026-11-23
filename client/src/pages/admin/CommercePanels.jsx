@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useEffect, useState } from 'react'
 import { CheckCircle2, CreditCard, Gift, RefreshCw, Save } from 'lucide-react'
 
 const input='w-full rounded-lg border border-ink/15 bg-white px-3 py-2.5 text-sm outline-none focus:border-mango-deep'
