@@ -13,7 +13,7 @@ export function MangoMascot({ mood = 'idle', message, compact = false }) {
   return (
     <div className={'mango-mascot-row' + (compact ? ' mango-mascot-row-compact' : '')}>
       <div className="mango-mascot-stage" role="img" aria-label={'Mango mascot, ' + MOOD_LABELS[safeMood]}>
-        <svg className="mango-mascot-svg" viewBox="0 0 150 150" aria-hidden="true">
+        <svg className="mango-mascot-svg" data-mood={safeMood} viewBox="0 0 150 150" aria-hidden="true">
           <defs>
             <linearGradient id="mangoFruit" x1="0" y1="0" x2="1" y2="1">
               <stop offset="0%" stopColor="#FFD66E" />
