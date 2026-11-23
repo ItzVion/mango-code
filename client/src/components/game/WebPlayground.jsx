@@ -19,6 +19,18 @@ export function WebPlayground({ task, onResult }) {
     passed: new RegExp(check.pattern, 'i').test(html + '\n' + css),
   })), [task.checks, html, css])
 
+  function updateHtml(value) {
+    setHtml(value)
+    setChecked(false)
+    if (passed) { setPassed(false); onResult?.({ pass: false }) }
+  }
+
+  function updateCss(value) {
+    setCss(value)
+    setChecked(false)
+    if (passed) { setPassed(false); onResult?.({ pass: false }) }
+  }
+
   function checkMission() {
     setChecked(true)
     const success = results.every(item => item.passed)
@@ -50,9 +62,9 @@ export function WebPlayground({ task, onResult }) {
       <div className="mango-web-editor-grid">
         <div className="mango-web-editors">
           <label className="mango-code-label" htmlFor="mango-html-editor">HTML <span>Structure</span></label>
-          <textarea id="mango-html-editor" value={html} onChange={event => { setHtml(event.target.value); setChecked(false) }} spellCheck={false} aria-label="Edit HTML" />
+          <textarea id="mango-html-editor" value={html} onChange={event => updateHtml(event.target.value)} spellCheck={false} aria-label="Edit HTML" />
           <label className="mango-code-label" htmlFor="mango-css-editor">CSS <span>Style</span></label>
-          <textarea id="mango-css-editor" value={css} onChange={event => { setCss(event.target.value); setChecked(false) }} spellCheck={false} aria-label="Edit CSS" />
+          <textarea id="mango-css-editor" value={css} onChange={event => updateCss(event.target.value)} spellCheck={false} aria-label="Edit CSS" />
         </div>
         <div className="mango-web-preview">
           <div className="mango-web-preview-head"><span><Eye size={14} /> Live preview</span><span className="mango-preview-dots"><i /><i /><i /></span></div>
