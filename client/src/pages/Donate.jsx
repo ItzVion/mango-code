@@ -120,7 +120,7 @@ export default function Donate() {
           <div className="flex items-center overflow-hidden rounded-lg border border-ink/15"><span className="border-r border-ink/10 bg-paper-dim px-4 py-3 text-sm font-semibold text-ink-soft">₹</span><input id="donation-amount" type="number" inputMode="numeric" min="1" max={settings?.maxAmountRupees || 100000} step="1" value={amount} onChange={e => { setAmount(e.target.value); setError('') }} className="min-w-0 flex-1 px-4 py-3 text-lg font-semibold outline-none"/></div>
           <div className="grid grid-cols-4 gap-2">{[49,99,199,499].map(value => <button key={value} type="button" onClick={() => setAmount(String(value))} className={'inline-flex min-h-11 items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold ' + (amount === String(value) ? 'border-mango bg-mango/10 text-ink' : 'border-ink/10 bg-white text-ink-soft hover:bg-paper-dim')}>₹{value}</button>)}</div>
           <button type="button" onClick={startDonation} disabled={busy || !settings} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-3 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">{busy ? 'Opening secure checkout…' : 'Continue to secure checkout'}</button>
-        </div>
+        </div>}
         {error && <p role="alert" className="rounded-lg border border-rose/20 bg-rose/5 px-3 py-2.5 text-sm text-rose">{error}</p>}
       </section>
       <aside className="space-y-4">
