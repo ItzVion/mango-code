@@ -107,7 +107,7 @@ adminRouter.patch('/reports/:id',async(req,res,next)=>{
 })
 adminRouter.get('/settings',async(req,res,next)=>{
  try {
-  const keys=['maintenance_mode','support_email','smtp_config','razorpay_key_id','razorpay_key_secret','qr_mode','upi_vpa','donation_message']
+  const keys=['maintenance_mode','support_email','smtp_config','razorpay_key_id','razorpay_key_secret','donation_message']
   const result=await db.execute({sql:'SELECT key,value FROM admin_settings WHERE key = ANY(?)',args:[keys]})
   const values=Object.fromEntries(result.rows.map(row=>[row.key,row.value]))
   let smtpConfigured=false
@@ -120,8 +120,6 @@ adminRouter.get('/settings',async(req,res,next)=>{
    smtp,
    razorpayKeyId:values.razorpay_key_id||'',
    razorpayKeySecretPresent:Boolean(values.razorpay_key_secret),
-   qrMode:values.qr_mode==='true',
-   upiVpa:values.upi_vpa||'',
    donationMessage:values.donation_message||'MangoCode is free to use. Contributions help cover hosting and keep learning resources available.',
   })
  }catch(e){next(e)}
@@ -138,15 +136,6 @@ adminRouter.put('/settings',async(req,res,next)=>{
   if(typeof body.donationMessage==='string'){
    if(body.donationMessage.length>4000)return res.status(400).json({error:'Donation message must be 4,000 characters or fewer.'})
    await setSetting('donation_message',body.donationMessage.trim(),req.userId)
-  }
-  if(body.qrMode!==undefined){
-   if(typeof body.qrMode!=='boolean')return res.status(400).json({error:'Invalid UPI QR mode.'})
-   await setSetting('qr_mode',String(body.qrMode),req.userId)
-  }
-  if(body.upiVpa!==undefined){
-   const vpa=String(body.upiVpa||'').trim()
-   if(vpa&&!/^[A-Z0-9._-]{2,64}@[A-Z0-9.-]{2,64}$/i.test(vpa))return res.status(400).json({error:'Enter a valid UPI ID (for example, name@bank).'})
-   await setSetting('upi_vpa',vpa,req.userId)
   }
   if(body.razorpayKeyId!==undefined){
    const keyId=String(body.razorpayKeyId||'').trim()
@@ -217,33 +206,5 @@ adminRouter.get('/donations',async(req,res,next)=>{
  try {
   const r=await db.execute("SELECT d.id,d.amount_rupees,d.status,d.created_at,u.name AS username,u.email FROM donations d LEFT JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 250")
   res.json(r.rows.map(row=>({...row,anonymous:!row.email})))
- }catch(e){next(e)}
-})
-adminRouter.get('/upi-claims',async(req,res,next)=>{
- try {
-  const r=await db.execute("SELECT c.id,c.amount_rupees,c.utr_number,c.status,c.created_at,c.reviewed_at,c.review_note,u.name AS username,u.email,u.has_donated FROM upi_donation_claims c JOIN users u ON u.id=c.user_id ORDER BY CASE c.status WHEN 'PENDING' THEN 0 WHEN 'APPROVED' THEN 1 ELSE 2 END,c.created_at DESC LIMIT 300")
-  res.json(r.rows)
- }catch(e){next(e)}
-})
-adminRouter.patch('/upi-claims/:id/review',async(req,res,next)=>{
- try {
-  const action=String(req.body?.action||'')
-  const note=typeof req.body?.note==='string'?req.body.note.trim().slice(0,500):''
-  if(!['approve','reject'].includes(action))return res.status(400).json({error:'Choose approve or reject.'})
-  const result=await db.transaction(async tx=>{
-   const current=await tx.execute({sql:'SELECT id,user_id,status FROM upi_donation_claims WHERE id=? FOR UPDATE',args:[req.params.id]})
-   const claim=current.rows[0]
-   if(!claim)return {status:'NOT_FOUND'}
-   if(claim.status!=='PENDING')return {status:'ALREADY_REVIEWED'}
-   const nextStatus=action==='approve'?'APPROVED':'REJECTED'
-   const updated=await tx.execute({sql:"UPDATE upi_donation_claims SET status=?,reviewed_at=CURRENT_TIMESTAMP,reviewed_by=?,review_note=? WHERE id=? AND status='PENDING'",args:[nextStatus,req.userId,note||null,req.params.id]})
-   if(updated.rowsAffected!==1)return {status:'ALREADY_REVIEWED'}
-   if(action==='approve')await tx.execute({sql:'UPDATE users SET has_donated=TRUE WHERE id=?',args:[claim.user_id]})
-   return {status:nextStatus,userId:claim.user_id}
-  })
-  if(result.status==='NOT_FOUND')return res.status(404).json({error:'UPI claim not found.'})
-  if(result.status==='ALREADY_REVIEWED')return res.status(409).json({error:'This UPI claim has already been reviewed.'})
-  await audit(req,'ADMIN_UPI_CLAIM_'+result.status,'upi_claim',String(req.params.id),{note})
-  res.json({success:true,status:result.status})
  }catch(e){next(e)}
 })
