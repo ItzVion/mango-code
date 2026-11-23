@@ -84,11 +84,6 @@ function CodeExample({ code, language }) {
   </section>
 }
 
-function StepIcon({ section }) {
-  const Icon = stepMeta[section]?.icon || BookOpen
-  return <Icon size={17} />
-}
-
 export default function Lesson() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -146,7 +141,7 @@ export default function Lesson() {
   const exercises = lesson?.exercises || []
   const quiz = lesson?.quiz || []
   const playQuizQuestion = game?.challenge ? null : quiz[0]
-  const finalQuiz = game?.challenge ? quiz.slice(0, 1) : quiz.slice(1)
+  const finalQuiz = game?.challenge ? [] : quiz.slice(1)
   const hasPlayStep = Boolean(game?.challenge || playQuizQuestion)
   const hasExercise = exercises.length > 0
   const hasPracticeRequirement = Boolean(webMission || hasExercise)
