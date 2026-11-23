@@ -34,8 +34,130 @@ button, a { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
 :focus-visible { outline: 3px solid rgba(184,121,18,.55); outline-offset: 3px; }
-.mc-shimmer::after, .mc-float, .mc-pulse { animation: none !important; }
-* { animation-duration: 0s !important; transition-duration: 100ms !important; }
+
+/* Interactive Mango lesson experience */
+.mango-lesson-shell { max-width: 900px; margin-inline: auto; padding-bottom: 3rem; }
+.mango-lesson-topline { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1rem; }
+.mango-back-link { display:inline-flex; align-items:center; gap:.45rem; color:var(--color-ink-soft); font-size:.85rem; font-weight:650; text-decoration:none; }
+.mango-back-link:hover { color:var(--color-ink); }
+.mango-xp-pill { display:inline-flex; align-items:center; gap:.4rem; border:1px solid #f2d48c; border-radius:999px; padding:.45rem .8rem; background:#fff8e8; color:#80500b; font-size:.78rem; font-weight:800; white-space:nowrap; }
+.mango-lesson-hero { display:flex; align-items:center; justify-content:space-between; gap:1.5rem; border:1px solid #f1dfb9; border-radius:26px; padding:1.2rem 1.4rem; background:linear-gradient(120deg,#fffaf0 0%,#fff 62%,#fff4db 100%); box-shadow:0 8px 26px rgba(64,48,18,.045); }
+.mango-lesson-copy { min-width:0; }
+.mango-eyebrow { margin:0 0 .4rem; color:#a96508; font-size:.65rem; font-weight:850; letter-spacing:.15em; text-transform:uppercase; }
+.mango-lesson-title { margin:0; font-size:clamp(1.45rem,3vw,2rem); line-height:1.13; font-weight:850; letter-spacing:-.04em; }
+.mango-lesson-subtitle { max-width:42rem; margin:.55rem 0 0; color:var(--color-ink-soft); font-size:.88rem; line-height:1.5; }
+.mango-lesson-progress { display:flex; align-items:center; gap:.8rem; margin:1.1rem 0 1.5rem; }
+.mango-progress-track { height:9px; flex:1; overflow:hidden; border-radius:99px; background:#eceeea; }
+.mango-progress-fill { height:100%; border-radius:inherit; background:linear-gradient(90deg,#e9a02d,#f5c45e); transition:width .35s ease; }
+.mango-progress-label { color:var(--color-ink-soft); font-size:.73rem; font-weight:750; white-space:nowrap; }
+.mango-step-panel { min-height:260px; }
+.mango-teach-card { border:1px solid #ebece8; border-radius:22px; background:#fff; padding:clamp(1.1rem,3vw,1.7rem); box-shadow:0 8px 24px rgba(24,32,28,.035); }
+.mango-teach-card p { max-width:66ch; }
+.mango-idea-strip { display:flex; align-items:flex-start; gap:.75rem; margin-top:1rem; border-radius:15px; background:#fff6e2; padding:.85rem 1rem; color:#77500e; font-size:.88rem; line-height:1.5; }
+.mango-idea-strip strong { display:block; color:#59390a; }
+.mango-challenge-card { border:1px solid #eedcb4; border-radius:23px; background:linear-gradient(145deg,#fffdf8,#fff8e8); padding:clamp(1rem,3vw,1.55rem); box-shadow:0 9px 27px rgba(89,57,10,.055); }
+.mango-challenge-heading { display:flex; align-items:flex-start; gap:.8rem; margin-bottom:1.1rem; }
+.mango-challenge-icon { display:grid; width:42px; height:42px; flex:0 0 42px; place-items:center; border:1px solid #f3d993; border-radius:14px; background:#ffefc7; color:#9a620c; }
+.mango-challenge-heading h3 { margin:0; font-size:1.15rem; line-height:1.35; font-weight:800; letter-spacing:-.02em; }
+.mango-answer-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.65rem; }
+.mango-answer-option { display:flex; min-height:58px; align-items:center; gap:.7rem; border:1.5px solid #e4e6e1; border-radius:15px; padding:.7rem .85rem; background:#fff; color:#18201c; text-align:left; font-size:.84rem; line-height:1.4; font-weight:650; transition:border-color .16s,background .16s,transform .16s; }
+.mango-answer-option:hover:not(:disabled) { border-color:#e4b657; background:#fffaf0; }
+.mango-answer-option.is-correct { border-color:#64a77e; background:#eff9f1; color:#246b43; }
+.mango-answer-option.is-wrong { border-color:#d98787; background:#fff1f0; color:#a43c42; animation:mango-wiggle .3s ease; }
+.mango-answer-letter { display:grid; width:26px; height:26px; flex:0 0 26px; place-items:center; border-radius:8px; background:#f3f4f1; color:#66716a; font-size:.7rem; font-weight:850; }
+.mango-challenge-feedback { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; margin-top:1rem; border-radius:15px; padding:.9rem 1rem; }
+.feedback-correct { background:#edf8f0; color:#286a43; }
+.feedback-wrong { background:#fff2ef; color:#914246; }
+.mango-feedback-copy strong { display:block; font-size:.88rem; }
+.mango-feedback-copy p { margin:.3rem 0 0; font-size:.82rem; line-height:1.5; }
+.mango-small-action { display:inline-flex; align-items:center; gap:.3rem; border:1px solid rgba(24,32,28,.12); border-radius:999px; padding:.45rem .7rem; background:rgba(255,255,255,.85); color:#29332d; font-size:.72rem; font-weight:750; white-space:nowrap; }
+.mango-hint-panel { margin:.65rem 0 0; border-left:3px solid #e6b34e; padding:.55rem .75rem; color:#77500e; font-size:.8rem; line-height:1.5; }
+.mango-web-mission { overflow:hidden; border:1px solid #e3e6e1; border-radius:22px; background:#fff; box-shadow:0 8px 24px rgba(24,32,28,.04); }
+.mango-web-mission-head { padding:1.2rem 1.25rem; border-bottom:1px solid #eceeea; }
+.mango-web-mission-title { display:flex; align-items:center; gap:.8rem; }
+.mango-web-mission-title h3 { margin:0; font-size:1.05rem; font-weight:850; }
+.mango-web-mission-head > p { margin:.8rem 0 0; color:var(--color-ink-soft); font-size:.86rem; line-height:1.55; }
+.mango-web-editor-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:0; }
+.mango-web-editors { min-width:0; padding:1rem; background:#171d1a; }
+.mango-code-label { display:flex; align-items:center; justify-content:space-between; margin:.15rem 0 .4rem; color:#f5ca78; font-size:.7rem; font-weight:850; letter-spacing:.08em; text-transform:uppercase; }
+.mango-code-label span { color:rgba(255,255,255,.45); font-size:.62rem; font-weight:600; letter-spacing:0; text-transform:none; }
+.mango-web-editors textarea { display:block; width:100%; min-height:154px; resize:vertical; border:1px solid rgba(255,255,255,.12); border-radius:10px; margin-bottom:1rem; padding:.8rem; background:#202923; color:#f4f6f2; font:12px/1.55 var(--font-mono); outline:none; tab-size:2; }
+.mango-web-editors textarea:focus { border-color:#eab34c; box-shadow:0 0 0 2px rgba(245,166,35,.18); }
+.mango-web-preview { min-width:0; background:#f6f7f4; }
+.mango-web-preview-head { display:flex; height:40px; align-items:center; justify-content:space-between; border-bottom:1px solid #e5e7e3; padding:0 .85rem; background:#fff; color:#56625a; font-size:.7rem; font-weight:750; }
+.mango-web-preview-head > span:first-child { display:inline-flex; align-items:center; gap:.4rem; }
+.mango-preview-dots { display:flex; gap:4px; }
+.mango-preview-dots i { width:7px; height:7px; border-radius:50%; background:#d6d9d3; }
+.mango-web-preview iframe { display:block; width:100%; height:320px; border:0; background:#fff; }
+.mango-web-requirements { padding:.9rem 1.2rem; border-top:1px solid #eceeea; }
+.mango-web-requirements-title { display:flex; align-items:center; gap:.45rem; margin-bottom:.6rem; color:#96600e; font-size:.72rem; font-weight:850; }
+.mango-web-requirement { display:flex; align-items:center; gap:.55rem; padding:.32rem 0; color:#56625a; font-size:.78rem; }
+.mango-requirement-number { display:grid; width:16px; height:16px; place-items:center; border:1px solid #ccd1ca; border-radius:50%; font-size:.6rem; font-weight:800; }
+.mango-web-feedback { margin:0 1.2rem .8rem; border-radius:13px; padding:.75rem .9rem; font-size:.8rem; }
+.mango-web-feedback strong { display:block; }
+.mango-web-feedback p { margin:.25rem 0 0; line-height:1.45; }
+.mango-web-feedback.is-passed { background:#edf8f0; color:#286a43; }
+.mango-web-feedback.is-incomplete { background:#fff3ed; color:#914246; }
+.mango-web-actions { display:flex; flex-wrap:wrap; gap:.6rem; border-top:1px solid #eceeea; padding:.9rem 1.2rem; }
+.mango-game-primary,.mango-game-secondary { display:inline-flex; align-items:center; justify-content:center; gap:.45rem; min-height:42px; border-radius:12px; padding:.65rem 1rem; font-size:.8rem; font-weight:800; }
+.mango-game-primary { background:#18201c; color:#fff; }
+.mango-game-primary:hover { background:#303b34; }
+.mango-game-secondary { border:1px solid #e0e3dd; background:#fff; color:#526057; }
+.mango-lesson-footer { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:1.4rem; border-top:1px solid #e9ebe7; padding-top:1rem; }
+.mango-next-button { display:inline-flex; align-items:center; justify-content:center; gap:.5rem; min-height:45px; border-radius:14px; padding:.7rem 1.25rem; background:#18201c; color:#fff; font-size:.84rem; font-weight:800; }
+.mango-next-button:disabled { opacity:.4; cursor:not-allowed; }
+.mango-finish-card { max-width:650px; margin:2rem auto; border:1px solid #f1dfb9; border-radius:28px; padding:2rem; background:linear-gradient(145deg,#fffaf0,#fff); text-align:center; box-shadow:0 16px 42px rgba(89,57,10,.08); }
+.mango-finish-card h2 { margin:.7rem 0 .35rem; font-size:1.7rem; font-weight:900; }
+.mango-finish-card p { color:var(--color-ink-soft); font-size:.9rem; line-height:1.5; }
+.mango-finish-award { display:inline-flex; align-items:center; gap:.4rem; margin:.8rem auto 1rem; border-radius:999px; padding:.55rem .9rem; background:#fff0c9; color:#87570d; font-size:.8rem; font-weight:850; }
+.mango-mascot-row { display:flex; align-items:center; justify-content:flex-end; gap:.75rem; min-width:0; }
+.mango-mascot-stage { width:116px; height:116px; flex:0 0 116px; display:grid; place-items:center; }
+.mango-mascot-svg { display:block; width:100%; height:100%; overflow:visible; transform-origin:50% 80%; }
+.mango-mascot-row-compact .mango-mascot-stage { width:94px; height:94px; flex-basis:94px; }
+.mango-speech-bubble { position:relative; max-width:210px; border:1px solid #f1dba9; border-radius:15px; padding:.65rem .8rem; background:#fff; color:#5a4930; font-size:.75rem; line-height:1.4; font-weight:650; box-shadow:0 5px 18px rgba(89,57,10,.055); }
+.mango-speech-tail { position:absolute; left:-6px; top:50%; width:10px; height:10px; border-left:1px solid #f1dba9; border-bottom:1px solid #f1dba9; background:#fff; transform:translateY(-50%) rotate(45deg); }
+.mango-mascot-svg .mango-body { transform-origin:50% 80%; }
+.mango-mascot-svg .mango-arm { transform-box:fill-box; transform-origin:50% 70%; }
+.mango-mascot-svg .mango-shadow { transform-origin:center; }
+.mango-mascot-row .mango-mascot-svg { animation:mango-idle 3s ease-in-out infinite; }
+.mango-mascot-row:has(.mango-mascot-svg) .mango-mascot-svg { will-change:transform; }
+.mango-mascot-row .mango-speech-bubble { animation:mango-bubble-in .3s ease both; }
+.mango-mascot-row:has(.mango-mascot-svg) { isolation:isolate; }
+@keyframes mango-idle { 0%,100% { transform:translateY(0) rotate(0); } 50% { transform:translateY(-5px) rotate(-2deg); } }
+@keyframes mango-happy { 0% { transform:translateY(0) scale(1); } 35% { transform:translateY(-13px) rotate(-6deg) scale(1.05); } 70% { transform:translateY(1px) rotate(5deg) scale(.98); } 100% { transform:translateY(0) scale(1); } }
+@keyframes mango-sad { 0%,100% { transform:translateY(0) rotate(0); } 25% { transform:translateY(2px) rotate(-4deg); } 75% { transform:translateY(2px) rotate(4deg); } }
+@keyframes mango-think { 0%,100% { transform:rotate(0); } 50% { transform:rotate(4deg) translateY(-2px); } }
+@keyframes mango-celebrate { 0% { transform:translateY(0) scale(1); } 30% { transform:translateY(-18px) rotate(-8deg) scale(1.08); } 65% { transform:translateY(0) rotate(8deg) scale(.98); } 100% { transform:translateY(0) scale(1); } }
+@keyframes mango-wiggle { 0%,100% { transform:translateX(0); } 25% { transform:translateX(-4px); } 75% { transform:translateX(4px); } }
+@keyframes mango-bubble-in { from { opacity:0; transform:translateY(5px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+.mango-mascot-row:has(.mango-mascot-svg) .mango-mascot-svg { animation-name:mango-idle; }
+.mango-mascot-row:has(.mango-mascot-svg) .mango-mascot-stage { transition:transform .2s ease; }
+@media (max-width:700px) {
+  .mango-lesson-hero { align-items:flex-start; padding:1rem; }
+  .mango-mascot-row { flex-direction:column; gap:.25rem; }
+  .mango-mascot-stage { width:88px; height:88px; flex-basis:88px; }
+  .mango-mascot-row-compact .mango-mascot-stage { width:76px; height:76px; flex-basis:76px; }
+  .mango-speech-bubble { max-width:155px; font-size:.68rem; padding:.5rem .6rem; text-align:center; }
+  .mango-speech-tail { left:50%; top:-6px; transform:translateX(-50%) rotate(135deg); }
+  .mango-web-editor-grid { grid-template-columns:1fr; }
+  .mango-web-preview iframe { height:250px; }
+}
+@media (max-width:500px) {
+  .mango-lesson-hero { gap:.35rem; }
+  .mango-lesson-subtitle { font-size:.8rem; }
+  .mango-answer-grid { grid-template-columns:1fr; }
+  .mango-challenge-feedback { flex-direction:column; }
+  .mango-lesson-footer { align-items:stretch; }
+  .mango-next-button { min-width:46%; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mango-mascot-svg { animation:mango-idle 3s ease-in-out infinite; }
+  .mango-mascot-row:has(.mango-speech-bubble) .mango-mascot-svg { animation:mango-idle 3s ease-in-out infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mango-mascot-svg, .mango-speech-bubble { animation:none !important; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
