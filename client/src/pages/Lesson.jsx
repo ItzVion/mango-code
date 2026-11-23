@@ -152,7 +152,6 @@ export default function Lesson() {
       : true
   const checkPassed = finalQuiz.every(question => answeredQuestions[question.id] === true)
   const playReady = !hasPlayStep || playPassed
-  const canFinish = Boolean(lesson?.completed || (playReady && practicePassed && checkPassed))
   const currentQuestion = finalQuiz[questionIndex]
   const questionAnswered = Boolean(currentQuestion && answeredQuestions[currentQuestion.id] === true)
 
