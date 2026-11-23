@@ -130,6 +130,11 @@ button:disabled { cursor: not-allowed; }
 @keyframes mango-celebrate { 0% { transform:translateY(0) scale(1); } 30% { transform:translateY(-18px) rotate(-8deg) scale(1.08); } 65% { transform:translateY(0) rotate(8deg) scale(.98); } 100% { transform:translateY(0) scale(1); } }
 @keyframes mango-wiggle { 0%,100% { transform:translateX(0); } 25% { transform:translateX(-4px); } 75% { transform:translateX(4px); } }
 @keyframes mango-bubble-in { from { opacity:0; transform:translateY(5px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+
+.mango-mascot-svg[data-mood="happy"] { animation:mango-happy .62s ease 2 !important; }
+.mango-mascot-svg[data-mood="sad"] { animation:mango-sad .75s ease 1 !important; }
+.mango-mascot-svg[data-mood="thinking"] { animation:mango-think 1.5s ease-in-out infinite !important; }
+.mango-mascot-svg[data-mood="celebrate"] { animation:mango-celebrate .72s ease 2 !important; }
 .mango-mascot-row:has(.mango-mascot-svg) .mango-mascot-svg { animation-name:mango-idle; }
 .mango-mascot-row:has(.mango-mascot-svg) .mango-mascot-stage { transition:transform .2s ease; }
 @media (max-width:700px) {
