@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, Heart } from 'lucide-react'
 import { getAccount, setAccount } from '../lib/user'
 
@@ -30,7 +30,6 @@ const field = 'w-full rounded-lg border border-ink/15 bg-white px-3.5 py-3 text-
 const button = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50'
 
 export default function Donate() {
-  const navigate = useNavigate()
   const [account, setCurrentAccount] = useState(getAccount())
   const [settings, setSettings] = useState(null)
   const [amount, setAmount] = useState('49')
@@ -116,12 +115,11 @@ export default function Donate() {
         <div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl border border-mango/30 bg-mango/10 text-mango-deep"><Heart size={21}/></span><div><p className="text-[11px] font-bold uppercase tracking-wider text-mango-deep">Community powered</p><h2 className="mt-0.5 text-xl font-semibold">Make a contribution</h2></div></div>
         <p className="text-sm leading-6 text-ink-soft">Choose any whole amount. There is no subscription, and donating is always optional.</p>
         {complete ? <div className="rounded-xl border border-leaf/20 bg-leaf/5 p-5"><CheckCircle2 size={25} className="text-leaf"/><h3 className="mt-3 font-semibold">Thank you for supporting MangoCode.</h3><p className="mt-1 text-sm text-ink-soft">Your Razorpay payment was independently verified with the payment provider.</p></div>
-        : step === 'amount' ? <div className="space-y-4">
+        ? <div className="space-y-4">
           <label className="block text-sm font-medium" htmlFor="donation-amount">Contribution amount (INR)</label>
           <div className="flex items-center overflow-hidden rounded-lg border border-ink/15"><span className="border-r border-ink/10 bg-paper-dim px-4 py-3 text-sm font-semibold text-ink-soft">₹</span><input id="donation-amount" type="number" inputMode="numeric" min="1" max={settings?.maxAmountRupees || 100000} step="1" value={amount} onChange={e => { setAmount(e.target.value); setError('') }} className="min-w-0 flex-1 px-4 py-3 text-lg font-semibold outline-none"/></div>
           <div className="grid grid-cols-4 gap-2">{[49,99,199,499].map(value => <button key={value} type="button" onClick={() => setAmount(String(value))} className={'inline-flex min-h-11 items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold ' + (amount === String(value) ? 'border-mango bg-mango/10 text-ink' : 'border-ink/10 bg-white text-ink-soft hover:bg-paper-dim')}>₹{value}</button>)}</div>
-          {settings?.qrMode && <p className="text-xs text-ink-soft">UPI QR mode is active. You will review the QR before entering your transaction reference.</p>}
-          <button type="button" onClick={startDonation} disabled={busy || !settings} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-3 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">{busy ? 'Opening secure checkout…' : settings?.qrMode ? 'Continue to UPI QR' : 'Continue to secure checkout'}</button>
+          <button type="button" onClick={startDonation} disabled={busy || !settings} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-3 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">{busy ? 'Opening secure checkout…' : 'Continue to secure checkout'}</button>
         </div>
         {error && <p role="alert" className="rounded-lg border border-rose/20 bg-rose/5 px-3 py-2.5 text-sm text-rose">{error}</p>}
       </section>
