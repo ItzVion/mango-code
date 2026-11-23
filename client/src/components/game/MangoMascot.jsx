@@ -1,5 +1,3 @@
-import React from 'react'
-
 const MOOD_LABELS = {
   idle: 'ready to learn',
   happy: 'happy',
