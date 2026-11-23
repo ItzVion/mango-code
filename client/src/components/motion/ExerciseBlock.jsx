@@ -49,14 +49,14 @@ export function ExerciseBlock({ id, prompt, starterCode, language = 'Code', onRe
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-2 text-xs text-white/60">
           <span>{language} · editor</span><span>Editable code</span>
         </div>
-        <textarea value={code} onChange={event => setCode(event.target.value)} spellCheck={false} aria-label="Your code"
+        <textarea value={code} onChange={event => { setCode(event.target.value); if (result?.pass) { setResult(null); onResult?.({ pass: false }) } }} spellCheck={false} aria-label="Your code"
           className="min-h-48 w-full resize-y bg-transparent p-4 font-mono text-[13px] leading-6 text-[#f1f4ee] outline-none placeholder:text-white/30 focus:ring-2 focus:ring-inset focus:ring-mango/50" />
       </div>
       <div className="flex flex-wrap items-center gap-2 border-t border-ink/10 px-4 py-3 sm:px-5">
         <button type="button" onClick={runCheck} disabled={loading || !code.trim()} className="inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-sm font-semibold text-paper hover:bg-ink/85 disabled:opacity-50">
           <Play size={15}/>{loading ? 'Running code…' : 'Run code'}
         </button>
-        <button type="button" onClick={() => { setCode(starterCode || ''); setResult(null) }} className="inline-flex items-center gap-2 rounded-lg border border-ink/15 px-3 py-2.5 text-sm font-medium text-ink-soft hover:bg-paper"><RotateCcw size={14}/>Reset</button>
+        <button type="button" onClick={() => { setCode(starterCode || ''); setResult(null); onResult?.({ pass: false, reset: true }) }} className="inline-flex items-center gap-2 rounded-lg border border-ink/15 px-3 py-2.5 text-sm font-medium text-ink-soft hover:bg-paper"><RotateCcw size={14}/>Reset</button>
       </div>
       {result && <div role="status" aria-live="polite" className={`flex items-start gap-2 border-t px-4 py-3 text-sm leading-6 sm:px-5 ${result.pass ? 'border-leaf/25 bg-leaf/5 text-leaf' : 'border-rose/25 bg-rose/5 text-rose'}`}>
         {result.pass ? <CheckCircle2 size={17} className="mt-0.5 shrink-0"/> : <XCircle size={17} className="mt-0.5 shrink-0"/>}
