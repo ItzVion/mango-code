@@ -26,8 +26,6 @@ async function request(path, options = {}) {
   return data
 }
 
-const field = 'w-full rounded-lg border border-ink/15 bg-white px-3.5 py-3 text-sm outline-none transition focus:border-mango-deep focus:ring-2 focus:ring-mango/20'
-const button = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50'
 
 export default function Donate() {
   const [account, setCurrentAccount] = useState(getAccount())
