@@ -59,6 +59,29 @@ const FILENAME = {
   cpp: 'main.cpp',
 }
 
+const BEGINNER_MISSIONS = {
+  'javascript-easy-1-ex1': { output: 'Mango earned 10 XP.' },
+  'javascript-easy-2-ex1': { output: '12' },
+  'javascript-easy-3-ex1': { output: 'Hello, Mango!' },
+  'javascript-easy-4-ex1': { output: 'Pass' },
+  'javascript-easy-5-ex1': { output: '6' },
+  'python-easy-1-ex1': { output: 'Hello, Mango!' },
+  'python-easy-2-ex1': { output: 'Mango earned 10 XP.' },
+  'python-easy-3-ex1': { output: 'Hello, Mango!' },
+  'python-easy-4-ex1': { output: '10' },
+  'python-easy-5-ex1': { output: 'Pass' },
+  'c-easy-1-ex1': { output: 'Hello, Mango!' },
+  'c-easy-2-ex1': { output: 'Lives: 3, Health: 7.5' },
+  'c-easy-3-ex1': { input: '4', output: 'Total: 7' },
+  'c-easy-4-ex1': { output: '10' },
+  'c-easy-5-ex1': { output: 'Pass' },
+  'cpp-easy-1-ex1': { output: 'Hello, Mango!' },
+  'cpp-easy-2-ex1': { output: 'Lives: 3, Health: 7.5' },
+  'cpp-easy-3-ex1': { output: 'Pass' },
+  'cpp-easy-4-ex1': { output: '6' },
+  'cpp-easy-5-ex1': { output: 'Hello, Mango!' },
+}
+
 async function saveAttempt(userId, exerciseId, passed, code) {
   if (!userId) return false
   await db.execute({
@@ -102,7 +125,7 @@ exercisesRouter.post('/check', optionalAuth, async (req, res) => {
         language,
         version,
         files: [{ name: FILENAME[exercise.language], content: code }],
-        stdin: String(exercise.test_input || '').slice(0, 4_000),
+        stdin: String(BEGINNER_MISSIONS[exercise.id]?.input ?? exercise.test_input ?? '').slice(0, 4_000),
         run_timeout: 3000,
         run_cpu_time: 3000,
         run_memory_limit: 64 * 1024 * 1024,
@@ -135,7 +158,7 @@ exercisesRouter.post('/check', optionalAuth, async (req, res) => {
     }
 
     const actual = String(run.stdout || '').slice(0, MAX_OUTPUT_LENGTH).trim()
-    const expected = String(exercise.expected_output || '').slice(0, MAX_OUTPUT_LENGTH).trim()
+    const expected = String(BEGINNER_MISSIONS[exercise.id]?.output ?? exercise.expected_output ?? '').slice(0, MAX_OUTPUT_LENGTH).trim()
     const pass = actual === expected
     const saved = await saveAttempt(req.userId, exerciseId, pass, code)
 
