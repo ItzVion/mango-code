@@ -28,6 +28,7 @@ export default async function handler(req, res) {
   baseHeaders(res)
 
   const requestPath = new URL(req.url || '/', 'http://mangocode.invalid').pathname
+  if (typeof req.path !== 'string') req.path = requestPath
   const methodNotAllowed = (allowed) => {
     res.setHeader('Allow', allowed)
     return res.status(405).json({ error: 'Method not allowed.' })
@@ -35,14 +36,28 @@ export default async function handler(req, res) {
 
   if (requestPath === '/api/security/status') {
     if (req.method !== 'GET') return methodNotAllowed('GET')
+    await new Promise((resolve, reject) => {
+      emergencyMiddleware(req, res, error => error ? reject(error) : resolve())
+    })
+    if (res.headersSent) return
     return securityStatus(req, res)
   }
   if (requestPath === '/api/security/lockdown') {
     if (req.method !== 'POST') return methodNotAllowed('POST')
+    if (!originAllowed(req)) return res.status(403).json({ error: 'Cross-site request blocked.' })
+    await new Promise((resolve, reject) => {
+      emergencyMiddleware(req, res, error => error ? reject(error) : resolve())
+    })
+    if (res.headersSent) return
     return activateLockdown(req, res)
   }
   if (requestPath === '/api/security/recover') {
     if (req.method !== 'POST') return methodNotAllowed('POST')
+    if (!originAllowed(req)) return res.status(403).json({ error: 'Cross-site request blocked.' })
+    await new Promise((resolve, reject) => {
+      emergencyMiddleware(req, res, error => error ? reject(error) : resolve())
+    })
+    if (res.headersSent) return
     return recoverLockdown(req, res)
   }
 

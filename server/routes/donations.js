@@ -6,7 +6,6 @@ import { checkRateLimit, clientIp } from '../rateLimit.js'
 
 export const donationsRouter = Router()
 
-const UTR_RE = /^[A-Z0-9]{8,22}$/
 const MAX_AMOUNT_RUPEES = 100000
 
 function secretKey() {
@@ -44,16 +43,14 @@ function safeCompareHex(expected, received) {
 
 donationsRouter.get('/public', async (_req, res, next) => {
   try {
-    const [donationMessage, qrMode, upiVpa, supportEmail, config] = await Promise.all([
+    const [donationMessage, supportEmail, config] = await Promise.all([
       setting('donation_message', 'MangoCode is free to use. Contributions help cover hosting and keep learning resources available.'),
-      setting('qr_mode', 'false'),
-      setting('upi_vpa'),
       setting('support_email', process.env.SUPPORT_EMAIL || ''),
       razorpayConfig(),
     ])
     res.setHeader('Cache-Control', 'no-store, max-age=0')
     res.json({
-      donationMessage, qrMode: qrMode === 'true', upiVpa, supportEmail,
+      donationMessage, supportEmail,
       razorpayKeyId: config.keyId || null,
       razorpayConfigured: Boolean(config.keyId && config.keySecret),
       maxAmountRupees: MAX_AMOUNT_RUPEES,
@@ -68,42 +65,6 @@ donationsRouter.get('/me', requireAuth, async (req, res, next) => {
       args: [req.userId],
     })
     res.json(result.rows)
-  } catch (error) { next(error) }
-})
-
-donationsRouter.get('/upi-claim/me', requireAuth, async (req, res, next) => {
-  try {
-    const result = await db.execute({
-      sql: 'SELECT id, amount_rupees, utr_number, status, created_at, reviewed_at, review_note FROM upi_donation_claims WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
-      args: [req.userId],
-    })
-    res.json(result.rows[0] || null)
-  } catch (error) { next(error) }
-})
-
-donationsRouter.post('/upi-claim', requireAuth, async (req, res, next) => {
-  try {
-    const allowed = await checkRateLimit('upi-claim:ip:' + clientIp(req), 5, 60 * 60 * 1000)
-    if (!allowed) return res.status(429).json({ error: 'Too many UPI claims. Please try again later.' })
-    const amountRupees = safeAmount(req.body?.amountRupees)
-    const utrNumber = typeof req.body?.utrNumber === 'string' ? req.body.utrNumber.trim().toUpperCase() : ''
-    if (!amountRupees) return res.status(400).json({ error: 'Enter a whole amount between ₹1 and ₹1,00,000.' })
-    if (!UTR_RE.test(utrNumber)) return res.status(400).json({ error: 'Enter a valid UTR / bank reference number (8–22 letters or numbers).' })
-    const pending = await db.execute({
-      sql: "SELECT id, amount_rupees, status, created_at FROM upi_donation_claims WHERE user_id = ? AND status = 'PENDING' ORDER BY created_at DESC LIMIT 1",
-      args: [req.userId],
-    })
-    if (pending.rows[0]) return res.status(409).json({ error: 'You already have a UPI payment awaiting review.', claim: pending.rows[0] })
-    try {
-      const created = await db.execute({
-        sql: 'INSERT INTO upi_donation_claims (user_id, amount_rupees, utr_number) VALUES (?, ?, ?) RETURNING id, amount_rupees, utr_number, status, created_at',
-        args: [req.userId, amountRupees, utrNumber],
-      })
-      return res.status(201).json({ success: true, claim: created.rows[0] })
-    } catch (error) {
-      if (error?.code === '23505') return res.status(409).json({ error: 'This UTR has already been submitted, or you already have a claim awaiting review.' })
-      throw error
-    }
   } catch (error) { next(error) }
 })
 

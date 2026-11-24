@@ -70,4 +70,6 @@ For Google Identity Services, add the public site's exact HTTPS origin in the We
 
 Signed-in learners have lesson completion, exercise attempts, checkpoint attempts and learning streaks stored against their account. Guest code runs are not attached to an account. The account's Saved results page is available at `/results`.
 
+Contributions are processed through Razorpay Checkout only. UPI remains available as a payment method inside Razorpay when enabled for the merchant account; MangoCode does not accept direct UPI QR transfers or UTR submissions for manual approval. Historical database migration files may still refer to the retired UPI claim table; the production table is preserved until a separately reviewed retention migration is approved.
+
 Bug reports are rate-limited and saved in Neon, then forwarded from the server to the configured Discord webhook. Reports contain the category, page path, description and an internal account ID when signed in. They can be reviewed under `/admin` → **Reports**. If Discord delivery is not configured or fails, the UI reports that the report was saved but not delivered.

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Navigate, Link } from 'react-router-dom'
-import { Activity, Users, FileText, Mail, Settings, Bug, ShieldCheck, RefreshCw, Search, Plus, Trash2, Save, ExternalLink, CheckCircle2, AlertTriangle, Clock3, BookOpen, Code2, X, Gift, CreditCard, Star } from 'lucide-react'
+import { Activity, Users, FileText, Mail, Settings, Bug, ShieldCheck, RefreshCw, Search, Plus, Trash2, Save, ExternalLink, CheckCircle2, AlertTriangle, BookOpen, Code2, X, Gift, CreditCard, Star } from 'lucide-react'
 import { DonationsPanel, PaymentsPanel } from './admin/CommercePanels'
 
 const tabs = [
